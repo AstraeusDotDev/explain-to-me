@@ -10,6 +10,10 @@
 
 ---
 
+## Build Progress
+
+The prepared-manifest prototype is implemented, and the user approved progression. PCM/render caching and the local Kokoro portion of Task 10 were brought forward for the next iteration under [the phase-2 execution plan](phase-2-cache-and-natural-narration.md). Measured evidence is in [phase-2 results](../benchmarks/phase-2-results.md). Human watch/listen approval and whole-process egress proof are still pending; this is not full-MVP acceptance. Resume with Task 9 ingestion/direction after voice feedback, rather than repeating the prototype or cache build.
+
 ## Execution Priority (Approved Revision)
 
 First prove a prepared manifest -> Apple speech -> measured timeline -> deterministic rendering -> captions/mux -> validation -> human-reviewed local video. This first milestone does not include automated direction, neural speech models, caching guarantees, or multiple quality policies. Those follow a successful end-to-end run. The ADRs and acceptance benchmark define the safety/acceptance details; the revised task order below is authoritative for execution.

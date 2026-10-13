@@ -148,13 +148,20 @@ function assertPinnedRendererVersions(): string {
   return REMOTION_PIN;
 }
 
-function verifyInstalledBrowser(browserPath: string): void {
+function verifyInstalledBrowser(browserPath: string): string {
   try {
     const version = execFileSync(browserPath, ["--version"], { encoding: "utf8", timeout: 5_000 }).trim();
     if (!version) throw new Error("the browser did not report a version");
+    return version;
   } catch (error) {
     throw new Error(`The installed browser at ${browserPath} could not be started. Set CHROME_PATH to a usable Chrome or Chromium executable.`, { cause: error });
   }
+}
+
+export function getBrowserIdentity(): { path: string; version: string; chromeMode: string } | null {
+  const browser = findInstalledBrowser();
+  if (!browser) return null;
+  return { ...browser, version: verifyInstalledBrowser(browser.path) };
 }
 
 async function listen(server: Server): Promise<number> {

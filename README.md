@@ -2,17 +2,33 @@
 
 `explain-to-me` is a local-first pipeline that turns a source artifact into a narrated, captioned explainer video. The system uses model-backed stages to create a constrained production plan, then uses measured narration timing and a deterministic renderer to produce and validate the final media.
 
-This repository now contains an executable prepared-manifest preview pipeline and a rendered first-milestone video. Automatic text-to-video direction, neural TTS, persistent caching, and richer profiles remain later work. Automated media checks pass; full human approval and process-wide zero-egress verification remain pending.
+This repository now contains an executable prepared-manifest preview pipeline, local Kokoro neural narration, and persistent narration/render caching. Automatic text-to-video direction and richer profiles remain later work. Automated media checks pass; full human approval and process-wide zero-egress verification remain pending.
+
+## Current iteration: neural narration and cached builds
+
+The narrator defaults to `--tts auto`: use local Kokoro (`af_heart`) when its runtime/models are installed, otherwise fall back explicitly to Apple speech. `--tts kokoro` fails clearly if unavailable; `--tts apple --voice Samantha` retains the original narrator. Voice quality is a listening decision, not something signal checks can approve.
+
+```bash
+# Setup-only network access: installs isolated Python packages and verified model assets.
+python3 scripts/setup-kokoro.py
+
+# Local neural build; choose a new output directory each time.
+npm exec --cache .cache/npm --offline --yes pnpm@10.18.3 -- explain-to-me build --manifest fixtures/golden-manifests/whisper-vs-tts.json --tts kokoro --voice af_heart --duration 60s --output out/my-neural-explainer
+```
+
+The default cache lives in `.explain-to-me/cache`; select another root with `--cache-dir`. PCM chunks are keyed by text, voice, rate/speed, model/runtime/adapter identity and relevant environment. Render keys include manifest, measured timeline, source/config/dependency hashes and browser environment. Unchanged warm builds skip both synthesis and frame rendering while still muxing and validating each output. Visual-only edits preserve narration but invalidate rendering. Cache records are private, atomic, bound to their request key, and digest-checked. In-flight factory deduplication is per cache instance, not a cross-process build lock; simultaneous separate CLI builds may duplicate cold work safely.
+
+Verified neural output: `out/phase-2-final-cold/video.mp4`. Samples for `af_heart`, `af_bella`, and `am_michael` are under `out/phase-2-voice-samples/`. See `docs/benchmarks/phase-2-results.md` for cold/warm measurements and remaining gates.
 
 ## First milestone: a watchable local video
 
 The approved execution order begins with a prepared manifest, Apple speech, measured audio timing, deterministic scenes, captions, muxing, and validation. The implemented milestone command is:
 
 ```bash
-pnpm explain-to-me build --manifest fixtures/golden-manifests/whisper-vs-tts.json --profile preview --duration 60s
+pnpm explain-to-me build --manifest fixtures/golden-manifests/whisper-vs-tts.json --profile preview --duration 60s --tts apple --voice Samantha
 ```
 
-It produces all six artifacts and passes the golden automated media checks; end-to-end human approval is still required. No runtime LLM, downloaded TTS model, browser capture provider, or cloud service is required. Caching guarantees, text ingestion/direction, Kokoro, and richer quality policies come afterward. Caption subdivisions within measured narration chunks use proportional estimates, not forced alignment.
+It produces all six artifacts and passes the golden automated media checks; end-to-end human approval is still required. No runtime LLM, downloaded TTS model, browser capture provider, or cloud service is required. Caching and Kokoro are now implemented in phase 2; text ingestion/direction and richer quality policies remain later work. Caption subdivisions within measured narration chunks use proportional estimates, not forced alignment.
 
 ### Setup and run
 

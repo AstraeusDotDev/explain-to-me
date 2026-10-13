@@ -7,7 +7,7 @@
   "scripts": {
     "explain-to-me": "tsx apps/cli/src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test packages/contracts/src/production-manifest.test.ts packages/timeline/src/timeline.test.ts packages/validation/src/validation.test.ts",
+    "test": "tsx --test packages/*/src/*.test.ts",
     "schema:manifest": "tsx packages/contracts/scripts/write-json-schema.ts"
   },
   "dependencies": {

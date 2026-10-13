@@ -9,4 +9,5 @@ out/
 *.log
 .env
 .venv/
+.venv-kokoro/
 __pycache__/

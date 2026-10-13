@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { accessSync, constants } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,6 +19,7 @@ import {
   extractPcmDataFromWav,
   runProcess,
   synthesizeNarration,
+  kokoroReadiness,
   writeWavFromPcm,
 } from "../../../packages/audio/src/synthesize.js";
 import {
@@ -34,9 +35,11 @@ import {
   validateRenderedMedia,
 } from "../../../packages/validation/src/qc.js";
 import type { Timeline } from "../../../packages/timeline/src/timeline.js";
+import { ContentAddressedCache } from "../../../packages/assets/src/cache.js";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DEFAULT_VOICE = "Samantha";
+const DEFAULT_VOICE = "auto";
+const APPLE_VOICE = "Samantha";
 const DEFAULT_WIDTH = 1_280;
 const DEFAULT_HEIGHT = 720;
 const DEFAULT_FPS = 24;
@@ -49,6 +52,8 @@ interface CliOptions {
   targetDurationMs?: number;
   outputPath?: string;
   voice: string;
+  backend: "apple" | "kokoro" | "auto";
+  cacheDir: string;
 }
 
 interface RendererResult {
@@ -73,6 +78,7 @@ type RenderVideo = (request: {
 }) => Promise<RendererResult>;
 
 interface RendererModule {
+  getBrowserIdentity: () => { path: string; version: string; chromeMode: string } | null;
   renderVideo: RenderVideo;
 }
 
@@ -107,16 +113,16 @@ async function doctor(args: string[]): Promise<void> {
   } catch {
     // The missing say binary is already reported as a required tool failure.
   }
-  const voiceReady = voices.includes(DEFAULT_VOICE);
-  statuses.push({ name: `Apple voice ${DEFAULT_VOICE}`, path: "/usr/bin/say", ready: voiceReady, detail: voiceReady ? "available" : "not listed by say -v ?" });
+  const voiceReady = voices.includes(APPLE_VOICE);
+  statuses.push({ name: `Apple voice ${APPLE_VOICE}`, path: "/usr/bin/say", ready: voiceReady, detail: voiceReady ? "available" : "not listed by say -v ?" });
   let voiceSampleCount = 0;
   let voiceSampleError = "";
   if (voiceReady) {
     const sampleDir = await mkdtemp(join(tmpdir(), "explain-to-me-doctor-"));
     try {
       const wavePath = join(sampleDir, "voice-check.wav");
-      runProcess("say", [
-        "-v", DEFAULT_VOICE, "-r", "160", "--file-format=WAVE",
+      runProcess("/usr/bin/say", [
+        "-v", APPLE_VOICE, "-r", "160", "--file-format=WAVE",
         `--data-format=LEI16@${PCM_SAMPLE_RATE}`, `--channels=${PCM_CHANNELS}`,
         "-o", wavePath, "Local speech synthesis check.",
       ]);
@@ -134,8 +140,15 @@ async function doctor(args: string[]): Promise<void> {
     detail: voiceSampleCount > 0 ? `${voiceSampleCount} samples synthesized` : voiceSampleError || "synthesis produced no PCM samples",
   });
 
+  const neural = kokoroReadiness();
+  statuses.push({ name: "Kokoro neural narrator (optional)", path: null, ready: neural.ready, detail: neural.reason });
   const rendererReady = await pathExists(RENDER_ENTRY);
-  const chrome = browserExecutable();
+  let chrome: string | null = null;
+  let browserError = "";
+  if (rendererReady) {
+    try { chrome = (await loadRenderer()).getBrowserIdentity()?.path ?? null; }
+    catch (error) { browserError = error instanceof Error ? error.message : String(error); }
+  }
   statuses.push({
     name: "Remotion renderer entry",
     path: rendererReady ? RENDER_ENTRY : null,
@@ -146,18 +159,18 @@ async function doctor(args: string[]): Promise<void> {
     name: "Chrome/Chromium",
     path: chrome,
     ready: chrome !== null,
-    detail: chrome ? "installed locally" : "if Remotion requires a browser, install it during setup and set CHROME_PATH to its absolute path",
+    detail: chrome ? "installed locally" : browserError || "install the render browser during setup and set CHROME_PATH to its absolute path",
   });
 
   const checks = statuses.map((item) => `${item.ready ? "OK" : item.name === "Remotion renderer entry" || item.name === "Chrome/Chromium" ? "PENDING" : "MISSING"}  ${item.name}${item.path ? ` — ${item.path}` : ""}${item.detail ? ` (${item.detail})` : ""}`);
   process.stdout.write(`${checks.join("\n")}\n`);
-  const coreReady = statuses.filter((item) => !["Remotion renderer entry", "Chrome/Chromium"].includes(item.name)).every((item) => item.ready);
+  const coreReady = statuses.filter((item) => item.name !== "Kokoro neural narrator (optional)").every((item) => item.ready);
   if (!coreReady) throw new Error("Required local audio/video tools are unavailable; install them before building.");
 }
 
 async function build(options: CliOptions): Promise<void> {
   const invocationStart = performance.now();
-  await assertBuildPrerequisites(options.voice);
+  await assertBuildPrerequisites(options.voice, options.backend);
   const manifestSourcePath = resolve(options.manifestPath);
   const manifestFileInfo = await stat(manifestSourcePath);
   if (manifestFileInfo.size > MAX_MANIFEST_BYTES) throw new Error(`Manifest exceeds the ${MAX_MANIFEST_BYTES}-byte input limit`);
@@ -194,6 +207,8 @@ async function build(options: CliOptions): Promise<void> {
     const synthesis = await timed("narrationSynthesis", () => synthesizeNarration({
       manifest,
       voice: options.voice,
+      backend: options.backend,
+      cacheDir: options.cacheDir,
       targetDurationMs: manifest.targetDurationMs,
       workDir: tempRoot,
     }));
@@ -211,14 +226,45 @@ async function build(options: CliOptions): Promise<void> {
     });
 
     const renderer = await loadRenderer();
-    const rendered = await timed("videoRender", () => renderer.renderVideo({
+    const browserIdentity = renderer.getBrowserIdentity();
+    if (!browserIdentity) throw new Error("No installed renderer browser is available; run setup first");
+    const renderCache = new ContentAddressedCache(options.cacheDir);
+    const renderRequest = {
       manifest,
       timeline: timeline.timeline,
       outputPath: join(tempRoot, "rendered-video-only.mp4"),
       width: DEFAULT_WIDTH,
       height: DEFAULT_HEIGHT,
       fps: DEFAULT_FPS,
-    }));
+    };
+    const renderKey = renderCache.key("render-video-v1", {
+      manifest, timeline: timeline.timeline,
+      width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, fps: DEFAULT_FPS,
+      rendererVersion: JSON.parse(await readFile(join(PROJECT_ROOT, "node_modules/remotion/package.json"), "utf8")).version,
+      sourceHashes: await rendererSourceHashes(),
+      environment: { node: process.version, platform: process.platform, arch: process.arch, osRelease: (await import("node:os")).release(), browser: browserIdentity },
+    });
+    let renderCacheHit = true;
+    const rendered = await timed("videoRender", async () => {
+      const packed = await renderCache.getOrCreate(renderKey, async () => {
+        renderCacheHit = false;
+        const fresh = await renderer.renderVideo(renderRequest);
+        if (fresh.browserExecutable !== browserIdentity.path) throw new Error("Browser selection changed during rendering; refusing mismatched cache identity");
+        const header = Buffer.from(JSON.stringify(fresh));
+        const length = Buffer.alloc(4);
+        length.writeUInt32LE(header.length);
+        return Buffer.concat([length, header, await readFile(fresh.outputPath)]);
+      });
+      if (packed.length < 4) throw new Error("Invalid cached render record");
+      const headerLength = packed.readUInt32LE(0);
+      if (headerLength > 65_536 || headerLength + 4 >= packed.length) throw new Error("Invalid cached render header");
+      const result = JSON.parse(packed.subarray(4, 4 + headerLength).toString("utf8")) as RendererResult;
+      if (!Array.isArray(result.network?.externalAttempts) || result.network.externalAttempts.length > 0 || result.durationInFrames !== timeline.timeline.durationInFrames) {
+        throw new Error("Cached render metadata does not match this validated build");
+      }
+      if (renderCacheHit) await writeFile(renderRequest.outputPath, packed.subarray(4 + headerLength));
+      return { ...result, outputPath: renderRequest.outputPath, wallTimeMs: renderCacheHit ? 0 : result.wallTimeMs };
+    });
     if (!Array.isArray(rendered.network?.externalAttempts)) {
       throw new Error("Renderer result omitted network.externalAttempts; refusing to report egress status without its declared evidence");
     }
@@ -265,16 +311,24 @@ async function build(options: CliOptions): Promise<void> {
         clock: "performance.now() monotonic milliseconds",
       },
       narration: {
-        engine: "Apple say",
+        engine: synthesis.engine,
+        backend: synthesis.backend,
         voice: synthesis.voice,
-        rateWpm: synthesis.finalRateWpm,
-        rateBoundsWpm: { min: MIN_RATE_WPM, max: MAX_RATE_WPM },
+        ...(synthesis.finalRateWpm === undefined ? {} : { rateWpm: synthesis.finalRateWpm, rateBoundsWpm: { min: MIN_RATE_WPM, max: MAX_RATE_WPM } }),
+        ...(synthesis.speed === undefined ? {} : { speed: synthesis.speed }),
+        warnings: synthesis.warnings,
+        provenance: synthesis.provenance,
         sampleRateHz: synthesis.sampleRate,
         channels: synthesis.channels,
         totalSamples: synthesis.totalSamples,
         measuredDurationMs: synthesis.durationMs,
         chunks: synthesis.chunks.map((chunk) => ({ id: chunk.id, sampleCount: chunk.samples })),
         durationAttempts: synthesis.attempts,
+      },
+      cache: {
+        directory: options.cacheDir,
+        narration: synthesis.cacheStats,
+        render: { hit: renderCacheHit, key: renderKey, ...renderCache.snapshotStats() },
       },
       timeline: {
         fps: timeline.timeline.fps,
@@ -319,7 +373,7 @@ async function build(options: CliOptions): Promise<void> {
         osRelease: (await import("node:os")).release(),
         ffmpeg: toolVersion("ffmpeg"),
         ffprobe: toolVersion("ffprobe"),
-        sayPath: findExecutable("say"),
+        sayPath: synthesis.backend === "apple" ? synthesis.provenance.executable : null,
         browserExecutable: rendered.browserExecutable,
         cpu: (await import("node:os")).cpus()[0]?.model ?? "unknown",
         logicalCpuCount: (await import("node:os")).cpus().length,
@@ -384,7 +438,7 @@ function parseBuildOptions(args: string[]): CliOptions {
       continue;
     }
     const key = argument.slice(2);
-    if (!["manifest", "profile", "duration", "output", "voice"].includes(key)) {
+    if (!["manifest", "profile", "duration", "output", "voice", "tts", "cache-dir"].includes(key)) {
       throw new Error(`Unknown build option --${key}`);
     }
     const value = args[index + 1];
@@ -403,12 +457,16 @@ function parseBuildOptions(args: string[]): CliOptions {
   const duration = values.get("duration");
   const targetDurationMs = duration === undefined ? undefined : parseDuration(duration);
   const outputPath = values.get("output");
+  const backend = values.get("tts") ?? "auto";
+  if (!["auto", "apple", "kokoro"].includes(backend)) throw new Error("--tts must be auto, apple, or kokoro");
   return {
     manifestPath,
     profile,
     ...(targetDurationMs === undefined ? {} : { targetDurationMs }),
     ...(outputPath === undefined ? {} : { outputPath }),
     voice: values.get("voice") ?? DEFAULT_VOICE,
+    backend: backend as "apple" | "kokoro" | "auto",
+    cacheDir: resolve(values.get("cache-dir") ?? join(PROJECT_ROOT, ".explain-to-me/cache")),
   };
 }
 
@@ -422,24 +480,36 @@ function parseDuration(value: string): number {
   return milliseconds;
 }
 
-async function assertBuildPrerequisites(voice: string): Promise<void> {
+async function assertBuildPrerequisites(voice: string, backend: "auto" | "apple" | "kokoro"): Promise<void> {
   if (!(await pathExists(RENDER_ENTRY))) {
     throw new Error(`Renderer integration is not ready: ${RENDER_ENTRY} is missing. Build can run after the renderer worker supplies the documented renderVideo boundary.`);
   }
-  for (const executable of ["say", "ffmpeg", "ffprobe"]) {
+  const neural = kokoroReadiness();
+  if (backend === "kokoro" && !neural.ready) throw new Error(`Kokoro is unavailable: ${neural.reason}. Run python3 scripts/setup-kokoro.py during setup.`);
+  const actualBackend = backend === "auto" ? neural.ready ? "kokoro" : "apple" : backend;
+  const executables = actualBackend === "apple" ? ["say", "ffmpeg", "ffprobe"] : ["ffmpeg", "ffprobe"];
+  for (const executable of executables) {
     if (!findExecutable(executable)) throw new Error(`Required executable "${executable}" was not found on PATH`);
   }
-  if (!listSystemVoices().includes(voice)) throw new Error(`Apple voice "${voice}" is not available according to "say -v ?"`);
+  const selectedVoice = voice === "auto" || (backend === "auto" && /^(af|am|bf|bm)_/.test(voice)) ? APPLE_VOICE : voice;
+  if (actualBackend === "apple" && !listSystemVoices().includes(selectedVoice)) throw new Error(`Apple voice "${selectedVoice}" is not available according to "say -v ?"`);
 }
 
 async function loadRenderer(): Promise<RendererModule> {
   try {
     const loaded = await import(pathToFileURL(RENDER_ENTRY).href) as Partial<RendererModule>;
-    if (typeof loaded.renderVideo !== "function") throw new Error("module does not export renderVideo(request)");
+    if (typeof loaded.renderVideo !== "function" || typeof loaded.getBrowserIdentity !== "function") throw new Error("module must export renderVideo(request) and getBrowserIdentity()");
     return loaded as RendererModule;
   } catch (error) {
     throw new Error(`Could not load apps/renderer-remotion/src/render.ts: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+async function rendererSourceHashes(): Promise<Record<string, string>> {
+  const paths = ["apps/renderer-remotion/src/entry.tsx", "apps/renderer-remotion/src/render.ts", "apps/renderer-remotion/src/video.tsx", "packages/renderer-core/src/renderer.ts", "package.json", "pnpm-lock.yaml", "tsconfig.json"];
+  const hashes: Record<string, string> = {};
+  for (const path of paths) hashes[path] = createHash("sha256").update(await readFile(join(PROJECT_ROOT, path))).digest("hex");
+  return hashes;
 }
 
 async function chooseOutputPath(requested: string | undefined, title: string, buildId: string): Promise<string> {
@@ -450,7 +520,7 @@ async function chooseOutputPath(requested: string | undefined, title: string, bu
 }
 
 function listSystemVoices(): string[] {
-  const output = runProcess("say", ["-v", "?"]);
+  const output = runProcess("/usr/bin/say", ["-v", "?"]);
   return output.split(/\r?\n/u).map((line) => line.trim().split(/\s{2,}/u)[0] ?? "").filter(Boolean);
 }
 
@@ -464,6 +534,9 @@ function toolVersion(executable: string): string {
 }
 
 function findExecutable(name: string): string | null {
+  if (name === "say") {
+    try { accessSync("/usr/bin/say", constants.X_OK); return "/usr/bin/say"; } catch { return null; }
+  }
   const pathValue = process.env.PATH ?? "";
   for (const directory of pathValue.split(":").filter(Boolean)) {
     const candidate = join(directory, name);
@@ -475,26 +548,6 @@ function findExecutable(name: string): string | null {
     }
   }
   return null;
-}
-
-function browserExecutable(): string | null {
-  const configured = process.env.CHROME_PATH ?? process.env.CHROME_EXECUTABLE_PATH;
-  if (configured && isAbsolute(configured) && pathExistsSync(configured)) return configured;
-  const candidates = [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/opt/homebrew/bin/chromium",
-  ];
-  return candidates.find((candidate) => pathExistsSync(candidate)) ?? null;
-}
-
-function pathExistsSync(path: string): boolean {
-  try {
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -516,7 +569,7 @@ function printHelp(): void {
     "",
     "Commands:",
     "  explain-to-me doctor",
-    "  explain-to-me build --manifest <file.json> [--profile preview] [--duration 60s] [--output <new-dir>] [--voice Samantha]",
+    "  explain-to-me build --manifest <file.json> [--profile preview] [--duration 60s] [--output <new-dir>] [--tts auto|apple|kokoro] [--voice af_heart] [--cache-dir <dir>]",
     "",
     "Prepared text input is unsupported in milestone 1. Build output is written only to a new directory.",
   ].join("\n") + "\n");
