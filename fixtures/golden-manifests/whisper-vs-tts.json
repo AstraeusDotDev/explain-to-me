@@ -1,0 +1,84 @@
+{
+  "version": "1",
+  "title": "Whisper is not text-to-speech",
+  "profile": "preview",
+  "targetDurationMs": 60000,
+  "theme": "technical-whiteboard",
+  "scenes": [
+    {
+      "id": "scene-title",
+      "kind": "title",
+      "title": "Two tools, opposite directions",
+      "narration": [
+        { "id": "chunk-title", "text": "Whisper and text-to-speech both work with language, but they solve opposite problems." }
+      ],
+      "visual": { "subtitle": "Audio to text, or text to audio?" }
+    },
+    {
+      "id": "scene-whisper",
+      "kind": "statement",
+      "title": "Whisper starts with audio",
+      "narration": [
+        { "id": "chunk-whisper", "text": "Whisper starts with recorded speech and predicts the words a person said. Its output is text, ready for search, subtitles, or analysis." }
+      ],
+      "visual": { "lines": ["Recorded speech", "Recognized words", "Search, captions, analysis"] }
+    },
+    {
+      "id": "scene-directions",
+      "kind": "diagram",
+      "title": "Follow the arrows",
+      "narration": [
+        { "id": "chunk-directions", "text": "Think of the systems as arrows pointing in opposite directions. Audio enters Whisper and text comes out. Text enters a speech engine and audio comes out. Those labels make the direction easy to remember." }
+      ],
+      "visual": {
+        "nodes": [
+          { "id": "audio-input", "label": "Audio" },
+          { "id": "text-output", "label": "Text" },
+          { "id": "text-input", "label": "Text" },
+          { "id": "speech-output", "label": "Speech" }
+        ],
+        "edges": [
+          { "from": "audio-input", "to": "text-output" },
+          { "from": "text-input", "to": "speech-output" }
+        ]
+      },
+      "cues": [
+        { "chunkId": "chunk-directions", "tokenIndex": 9, "action": "highlight", "target": "audio-input", "timingFallback": "sentence-start" },
+        { "chunkId": "chunk-directions", "tokenIndex": 16, "action": "highlight", "target": "text-input", "timingFallback": "sentence-start" }
+      ]
+    },
+    {
+      "id": "scene-comparison",
+      "kind": "comparison",
+      "title": "Choose by the input you have",
+      "narration": [
+        { "id": "chunk-comparison", "text": "Whisper is useful when speech already exists: meeting notes, voice search, accessibility captions, and transcription. Text-to-speech is useful when written content needs a spoken form, such as screen readers, navigation, or narrated lessons." }
+      ],
+      "visual": {
+        "left": { "title": "Whisper", "lines": ["Input: recorded audio", "Output: text", "Notes and captions"] },
+        "right": { "title": "Text-to-speech", "lines": ["Input: written text", "Output: audio", "Readers and narration"] }
+      }
+    },
+    {
+      "id": "scene-code",
+      "kind": "code",
+      "title": "The types tell the story",
+      "narration": [
+        { "id": "chunk-code", "text": "The interface makes the distinction concrete. A transcription function accepts audio and returns text. A speech function accepts text and returns audio, so their input and output types reveal which direction they travel." }
+      ],
+      "visual": {
+        "code": "const words = await transcribe(audio);\nconst speech = await speak(words);",
+        "lines": ["audio → text", "text → audio"]
+      }
+    },
+    {
+      "id": "scene-outro",
+      "kind": "outro",
+      "title": "Match the tool to the direction",
+      "narration": [
+        { "id": "chunk-outro", "text": "Remember the direction: Whisper turns speech into text; text-to-speech turns text into speech. Choose the tool that matches the data you have and the result you need." }
+      ],
+      "visual": { "subtitle": "Whisper: speech → text. TTS: text → speech." }
+    }
+  ]
+}

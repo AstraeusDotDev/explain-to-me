@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "profile": {
+      "type": "string",
+      "const": "preview"
+    },
+    "targetDurationMs": {
+      "type": "integer",
+      "minimum": 10000,
+      "maximum": 600000
+    },
+    "theme": {
+      "type": "string",
+      "const": "technical-whiteboard"
+    },
+    "scenes": {
+      "minItems": 3,
+      "maxItems": 16,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "title",
+              "statement",
+              "diagram",
+              "comparison",
+              "code",
+              "outro"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          },
+          "narration": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1600
+                }
+              },
+              "required": [
+                "id",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "visual": {
+            "type": "object",
+            "properties": {
+              "subtitle": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 180
+              },
+              "lines": {
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                }
+              },
+              "nodes": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 180
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "edges": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                    },
+                    "to": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "left": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 180
+                  },
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "lines"
+                ],
+                "additionalProperties": false
+              },
+              "right": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 180
+                  },
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "lines"
+                ],
+                "additionalProperties": false
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2400
+              }
+            },
+            "additionalProperties": false
+          },
+          "cues": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chunkId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "tokenIndex": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "action": {
+                  "type": "string",
+                  "const": "highlight"
+                },
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+                },
+                "timingFallback": {
+                  "type": "string",
+                  "const": "sentence-start"
+                }
+              },
+              "required": [
+                "chunkId",
+                "tokenIndex",
+                "action",
+                "target",
+                "timingFallback"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "narration",
+          "visual"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "title",
+    "profile",
+    "targetDurationMs",
+    "theme",
+    "scenes"
+  ],
+  "additionalProperties": false,
+  "$comment": "Cross-field checks for duplicate identifiers, scene-kind requirements, cue chunk/token references, cue targets, and edge endpoints are enforced by productionManifestSchema at runtime."
+}

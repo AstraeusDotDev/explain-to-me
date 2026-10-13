@@ -10,6 +10,10 @@
 
 ---
 
+## Execution Priority (Approved Revision)
+
+First prove a prepared manifest -> Apple speech -> measured timeline -> deterministic rendering -> captions/mux -> validation -> human-reviewed local video. This first milestone does not include automated direction, neural speech models, caching guarantees, or multiple quality policies. Those follow a successful end-to-end run. The ADRs and acceptance benchmark define the safety/acceptance details; the revised task order below is authoritative for execution.
+
 ## 1. Product Definition
 
 `explain-to-me` accepts an artifact such as Markdown, plain text, source code, an HTML page, a PDF, or a structured JSON document and produces:
@@ -61,7 +65,7 @@ Therefore:
 - implement `RendererAdapter` from day one;
 - build the first adapter with Remotion;
 - keep the production manifest renderer-neutral;
-- add a Revideo proof of concept before declaring the architecture settled.
+- add a Revideo proof of concept after the releasable MVP, before declaring the renderer architecture settled; it must render the unchanged complete golden manifest, not a reduced subset.
 
 Revideo is an MIT-licensed TypeScript alternative with a headless Node rendering API, browser workers, WebCodecs frame encoding, and FFmpeg-based audio/final muxing.[3][4] It is the strongest permissively licensed fallback, but it has a smaller ecosystem.
 
@@ -111,7 +115,9 @@ input artifact
 - Asset generation runs concurrently after the storyboard is stable.
 - Each stage is content-addressed and cached.
 - A failed optional stage degrades gracefully: generated video -> generated still -> stock/icon -> typography.
-- The deadline manager can skip or downgrade stages to honor the requested build-time budget.
+- The deadline manager may skip or downgrade optional stages, reserving time for mandatory production and validation. An infeasible mandatory-stage deadline fails explicitly; it is not a guarantee of completion.
+- With `--allow-cloud false` (default), all build stages must make zero external requests. Prepared-manifest execution bypasses direction; the later template director provides a guaranteed offline fallback.
+- Requested duration and measured duration are distinct. Allow at most two corrections after initial synthesis, within pinned conservative voice-rate bounds; fail explicitly if duration/intelligibility requirements cannot be met. Never truncate narration or insert long silence to manufacture a pass.
 
 ## 5. Speed-versus-Quality Profiles
 
@@ -241,25 +247,33 @@ Create a renderer-neutral manifest similar to:
   "targetDurationMs": 75000,
   "theme": "technical-whiteboard",
   "narration": {
-    "voice": "kokoro:af_heart",
+    "voicePreference": "local-neural",
     "music": false
   },
   "scenes": [
     {
       "id": "scene-001",
       "kind": "diagram",
-      "narration": "Whisper turns audio into text. Text-to-speech goes the other direction.",
+      "narration": [{"id": "chunk-001", "text": "Whisper turns audio into text. Text-to-speech goes the other direction."}],
       "visual": {
-        "nodes": ["Audio", "Whisper", "Text", "TTS", "Narration"],
-        "emphasis": ["Whisper", "TTS"]
+        "nodes": [
+          {"id": "audio-node", "label": "Audio"},
+          {"id": "whisper-node", "label": "Whisper"},
+          {"id": "text-node", "label": "Text"},
+          {"id": "tts-node", "label": "TTS"},
+          {"id": "narration-node", "label": "Narration"}
+        ],
+        "emphasis": ["whisper-node", "tts-node"]
       },
       "cues": [
-        {"atWord": "Whisper", "action": "highlight", "target": "whisper-node"}
+        {"chunkId": "chunk-001", "tokenIndex": 0, "action": "highlight", "target": "whisper-node", "timingFallback": "sentence-start"}
       ]
     }
   ]
 }
 ```
+
+Cue indices are zero-based against versioned narration token normalization. Resolved cue timestamps, selected provider voices, and timing-fallback use belong in the build record. This example illustrates intent, not a finalized schema or the complete golden fixture.
 
 Use Zod plus generated JSON Schema. The LLM-facing schema should reject unknown scene kinds, arbitrary file paths, raw shell commands, executable JavaScript, and unbounded URLs.
 
@@ -296,292 +310,217 @@ explain-to-me/
     plans/
 ```
 
-## 10. Implementation Phases
+## 10. Implementation Phases — Revised Execution Order
 
-### Task 1: Record architecture and acceptance benchmarks
+The first milestone is a real, watchable local video, not the complete framework. Tasks 1–7 establish that milestone without an LLM, downloaded speech model, cloud service, browser capture provider, or generated visual dependency. Tasks 8–13 complete the releasable MVP. Tasks 14–16 are post-MVP work.
 
-**Objective:** Turn the product concept into measurable acceptance criteria before selecting model defaults.
+Implement each code task with failing tests first, observe the failure, implement the minimum behavior, rerun relevant tests/typechecks, and commit only the task's files. The steps below are task boundaries; split them into small TDD increments during execution. Do not create empty packages for later phases.
 
-**Files:**
-- Create: `README.md`
-- Create: `docs/architecture/0001-system-boundaries.md`
-- Create: `docs/architecture/0002-renderer-selection.md`
-- Create: `docs/benchmarks/acceptance.md`
+### Task 1: Reconcile architecture and freeze the first milestone
 
-**Steps:**
+**Objective:** Establish one consistent acceptance contract before coding.
 
-1. Define supported MVP input as Markdown/plain text plus local images.
-2. Define a 60-second golden explainer fixture.
-3. Define success: valid MP4, intelligible audio, caption coverage, no scene overruns, deterministic rerender, and measured wall time.
-4. Record separate targets for cold and warm cache.
-5. Record Remotion license constraints and the Revideo exit strategy.
-6. Commit documentation separately.
-
-**Verification:** A reviewer can answer exactly what the MVP supports, what "fast" means, and which features are explicitly deferred.
-
-### Task 2: Bootstrap the TypeScript monorepo
-
-**Objective:** Create the package boundaries and quality gates.
-
-**Files:**
-- Create: `package.json`
-- Create: `pnpm-workspace.yaml`
-- Create: `tsconfig.base.json`
-- Create: `vitest.workspace.ts`
-- Create: `apps/cli/`
-- Create: `packages/contracts/`
+**Files:** `README.md`, `docs/architecture/0001-system-boundaries.md`, `docs/architecture/0002-renderer-selection.md`, `docs/benchmarks/acceptance.md`, this plan.
 
 **Steps:**
+1. Record the first milestone and distinguish it from releasable MVP acceptance.
+2. Keep the offline policy, canonical local-file boundary, full golden-fixture portability rule, and renderer-neutral intent/build-record separation authoritative.
+3. Define duration correction, cue identities, and downstream invalidation semantics.
+4. Check documentation consistency and commit documentation separately.
 
-1. Initialize pnpm workspace and strict TypeScript.
-2. Add lint, format, typecheck, and test scripts.
-3. Add a `doctor` command that checks Node, FFmpeg, ffprobe, fonts, available TTS backends, GPU/model services, and writable cache space.
-4. Write failing CLI smoke tests.
-5. Implement the minimum CLI until tests pass.
-6. Commit.
+**Verification:** `git diff --check`; all documents identify prepared-manifest execution as the first milestone, not a completed text-to-video product.
 
-**Verification:** `pnpm test && pnpm typecheck && pnpm explain-to-me doctor` pass locally.
+### Task 2: Bootstrap only the executable spine
 
-### Task 3: Define and validate `ProductionManifest`
+**Objective:** Create the minimum TypeScript workspace and CLI needed for the local golden path.
 
-**Objective:** Establish the stable contract between AI planning and deterministic execution.
-
-**Files:**
-- Create: `packages/contracts/src/production-manifest.ts`
-- Create: `packages/contracts/schema/production-manifest.schema.json`
-- Create: `packages/contracts/test/production-manifest.test.ts`
-- Create: `fixtures/golden-manifests/whisper-vs-tts.json`
+**Files:** `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, test configuration appropriate to pinned Vitest, `apps/cli/`, `packages/contracts/`.
 
 **Steps:**
+1. Pin Node/pnpm/dependency versions; add strict TypeScript, lint, format, typecheck, and test scripts.
+2. Write failing CLI argument and doctor tests.
+3. Implement `doctor` for Node, FFmpeg, ffprobe, Apple speech, bundled fonts, and writable output/cache locations. Optional backends are informational, not blockers.
+4. Add CLI parsing for the first milestone command; do not claim build success until Task 7 wires execution.
 
-1. Write tests for valid and invalid manifests.
-2. Define scene discriminated unions and bounded media references.
-3. Reject executable code and unsafe paths.
-4. Generate JSON Schema from the canonical types.
-5. Validate the golden manifest.
-6. Commit.
+**Verification:** `pnpm test && pnpm typecheck && pnpm explain-to-me doctor`; no unnecessary later-stage packages.
 
-**Verification:** malformed scene kinds, path traversal, unknown properties, and invalid timings fail with actionable errors.
+### Task 3: Freeze the manifest, cue contract, and golden fixture
 
-### Task 4: Implement artifact ingestion and direction
+**Objective:** Establish renderer-neutral production intent without model generation.
 
-**Objective:** Convert a source artifact into a script and renderer-neutral storyboard.
-
-**Files:**
-- Create: `packages/ingest/src/markdown.ts`
-- Create: `packages/director/src/director.ts`
-- Create: `packages/director/src/prompts/production-manifest.md`
-- Create: `packages/director/test/director.test.ts`
+**Files:** `packages/contracts/src/production-manifest.ts`, `packages/contracts/schema/production-manifest.schema.json`, `packages/contracts/test/production-manifest.test.ts`, `fixtures/inputs/whisper-vs-tts.md`, `fixtures/golden-manifests/whisper-vs-tts.json`.
 
 **Steps:**
+1. Write validation tests for scene discriminated unions, unknown fields, unsafe references, duplicate IDs, dangling cue targets, and invalid timing intent.
+2. Give diagram nodes and all cue targets stable IDs. Anchor speech cues by chunk ID plus normalized token index, never an ambiguous word string.
+3. Freeze a prepared manifest covering title/statement, diagram, kinetic labels, comparison, code card, and outro.
+4. Generate JSON Schema from canonical contracts; validate the fixture.
+5. Keep providers, renderer settings, resolved timings, and environment in the build record, not production intent.
 
-1. Normalize Markdown into sections, code blocks, links, images, and source metadata.
-2. Define a provider-neutral LLM interface.
-3. Require structured output matching the manifest schema.
-4. Add deterministic repair/retry only for schema errors.
-5. Add duration budgeting based on narration word count, but treat it as a draft estimate.
-6. Commit.
+**Verification:** `pnpm test && pnpm typecheck`; the prepared manifest validates and requires no runtime model call or remote assets.
 
-**Verification:** the golden input produces a valid manifest without executing generated code.
+### Task 4: Produce Apple narration and measured timing
 
-### Task 5: Build the audio chunk pipeline with macOS speech
+**Objective:** Turn the golden script into playable narration and sentence captions with exact chunk boundaries.
 
-**Objective:** Produce real narration and an exact chunk timeline with no downloaded model dependency.
-
-**Files:**
-- Create: `packages/audio/src/tts.ts`
-- Create: `packages/audio/src/adapters/macos-speech.ts`
-- Create: `packages/audio/src/chunk-manifest.ts`
-- Create: `packages/audio/test/macos-speech.test.ts`
+**Files:** `packages/audio/src/tts.ts`, `packages/audio/src/adapters/macos-speech.ts`, `packages/audio/src/chunk-manifest.ts`, `packages/audio/test/macos-speech.test.ts`, `packages/timeline/src/timeline.ts`, `packages/timeline/test/timeline.test.ts`.
 
 **Steps:**
+1. Test deterministic chunk IDs, sentence segmentation, normalization, and cumulative sample offsets.
+2. Synthesize chunks with Apple speech through argument-safe subprocess calls; normalize to one documented PCM sample rate/channel layout.
+3. Measure decoded sample counts, concatenate chunks, derive scene intervals, and emit VTT/SRT sentence captions.
+4. Resolve token-index cues only when reliable timing exists; otherwise use a declared sentence-level fallback, recorded in the report.
+5. Test frame-boundary rounding and monotonic captions without accumulated scene drift.
 
-1. Write tests for sentence chunking and concatenated offsets.
-2. Generate one audio file per narration chunk.
-3. Probe files with ffprobe and record sample counts/durations.
-4. Concatenate without losing chunk boundaries.
-5. Emit caption segments at sentence granularity.
-6. Commit.
+**Verification:** playable `audio.wav`, sample-based offsets, both caption formats, and final caption end within the pinned tolerance. Live Apple-speech integration is exercised, not only mocked.
 
-**Verification:** the golden narration produces playable audio, monotonic chunk offsets, and captions ending at the measured audio duration.
+### Task 5: Implement bounded duration control
 
-### Task 6: Add Kokoro and whisper.cpp adapters
+**Objective:** Make the requested duration enforceable rather than a word-count estimate.
 
-**Objective:** Upgrade voice quality and add local transcript/timing QC.
-
-**Files:**
-- Create: `services/local-models/kokoro_service.py`
-- Create: `packages/audio/src/adapters/kokoro.ts`
-- Create: `packages/audio/src/alignment/whisper-cpp.ts`
-- Create: `packages/audio/src/qc/transcript-match.ts`
-- Create: `packages/audio/test/kokoro-contract.test.ts`
+**Files:** `packages/timeline/src/duration-policy.ts`, `packages/timeline/test/duration-policy.test.ts`, `packages/audio/src/duration-correction.ts`.
 
 **Steps:**
+1. Record requested duration, measured narration duration, tolerance, and correction attempts separately.
+2. Use a pinned maximum of two corrections after initial synthesis. For prepared-manifest execution, adjust Apple speech rate within a documented conservative range; never silently truncate words or add long silence to manufacture a pass.
+3. Regenerate only chunks whose effective text/voice/rate changed, then remeasure and rebuild the timeline.
+4. If no intelligible in-range result is obtained, fail clearly; do not publish a successful build report.
+5. Add below/inside/above-tolerance, exhausted-retry, and changed-chunk tests. Later direction may explicitly rewrite narration under the same bounded policy, producing a new validated manifest.
 
-1. Isolate Python dependencies from the Node workspace.
-2. Preserve Kokoro token timing metadata when present.
-3. Add a health/capabilities endpoint or subprocess protocol.
-4. Run whisper.cpp only when timing or transcript QC is requested.
-5. Fuzzy-match recognized words to intended words and report confidence.
-6. Fall back to sentence timing when word alignment is unreliable.
-7. Commit.
+**Verification:** the golden narration is within 59.000–61.000 seconds; boundary tests pass and infeasible inputs fail with actual measured duration and corrective guidance.
 
-**Verification:** switching TTS adapters does not alter renderer-facing contracts; bad narration chunks are detected and isolated.
+### Task 6: Render deterministic scenes through the adapter
 
-### Task 7: Implement the first deterministic renderer
+**Objective:** Produce video frames for the complete golden manifest.
 
-**Objective:** Render the golden manifest into a complete video using only deterministic assets.
-
-**Files:**
-- Create: `apps/renderer-remotion/`
-- Create: `packages/renderer-core/src/renderer.ts`
-- Create: `apps/renderer-remotion/src/compositions/Explainer.tsx`
-- Create: `apps/renderer-remotion/src/scenes/`
-- Create: `apps/renderer-remotion/test/render-smoke.test.ts`
+**Files:** `packages/renderer-core/src/renderer.ts`, `apps/renderer-remotion/src/compositions/Explainer.tsx`, `apps/renderer-remotion/src/scenes/`, `apps/renderer-remotion/test/render-smoke.test.ts`.
 
 **Steps:**
+1. Define neutral renderer requests containing validated intent, measured timeline, approved local assets, and render settings.
+2. Implement title, statement/kinetic labels, diagram, comparison, code, and outro; add bullets/image before releasable MVP acceptance.
+3. Use bundled fonts, seeded animation, and the measured timeline; prohibit external browser requests.
+4. Smoke-render a short low-resolution fixture, then the unchanged complete golden manifest at preview settings.
 
-1. Implement renderer-neutral input contracts.
-2. Build title, statement, bullets, diagram, code, image, and outro scenes.
-3. Drive frame durations from the measured timeline.
-4. Add captions and safe-area checks.
-5. Render a low-resolution smoke video.
-6. Render the full golden video.
-7. Commit.
+**Verification:** video-only media decodes, every golden scene/cue is represented, and scene intervals obey the one-frame tolerance. This is not yet final build success.
 
-**Verification:** ffprobe confirms expected duration, frame rate, video stream, and audio stream; no scene exceeds its assigned interval.
+### Task 7: Wire build, mux, validation, and atomic publication — First Milestone
 
-### Task 8: Implement asset providers and caching
+**Objective:** One command produces all six artifacts and a watchable local video.
 
-**Objective:** Make visual acquisition parallel, reproducible, and cheap to retry.
+**Files:** `apps/cli/src/build.ts`, `packages/audio/src/mux.ts`, `packages/validation/src/media-probe.ts`, `packages/validation/src/report.ts`, `apps/cli/test/build.integration.test.ts`.
 
-**Files:**
-- Create: `packages/assets/src/provider.ts`
-- Create: `packages/assets/src/cache.ts`
-- Create: `packages/assets/src/providers/playwright.ts`
-- Create: `packages/assets/src/providers/local-file.ts`
-- Create: `packages/assets/test/cache.test.ts`
+**Command:**
+```bash
+pnpm explain-to-me build --manifest fixtures/golden-manifests/whisper-vs-tts.json --profile preview --duration 60s
+```
 
 **Steps:**
+1. Connect manifest validation, Apple narration, bounded duration correction, timeline/captions, rendering, audio muxing, and validation.
+2. Write into a unique staging directory; refuse destructive output collisions. Publish a completed output directory only after required automated gates pass; preserve actionable failure diagnostics separately.
+3. Emit `video.mp4`, `audio.wav`, `captions.vtt`, `captions.srt`, `manifest.json`, and `report.json` with matching build identity and provenance.
+4. Probe/decode MP4; check actual container/audio/video duration, audio/video-end sync, captions, scene boundaries, silence/clipping, and sampled frames.
+5. Capture monotonic total/stage timings, version/license metadata, effective rate/cue fallbacks, and zero-egress evidence. Record unavailable ASR explicitly; never pretend it ran.
+6. Watch/listen end to end and record manual approval separately from automated pass status.
 
-1. Define an asset request/result contract with provenance and license fields.
-2. Implement content-addressed storage.
-3. Add local-file and Playwright capture providers.
-4. Deduplicate concurrent identical requests.
-5. Add cancellation and per-provider deadlines.
-6. Commit.
+**Verification:** run the command on the actual machine; all six artifacts exist, the video passes the first-milestone gates in the benchmark, and human review confirms it is intelligible and watchable. Report actual elapsed time, not estimated throughput. Stop here for review before expanding scope.
 
-**Verification:** a warm rerun performs no repeated capture or generation work and produces identical asset hashes.
+### Task 8: Add content-addressed caching and invalidation
 
-### Task 9: Implement quality profiles and deadline-aware scheduling
+**Objective:** Avoid redundant work while keeping changes correct.
 
-**Objective:** Make speed/quality an explicit, testable product feature.
-
-**Files:**
-- Create: `packages/quality/src/profiles.ts`
-- Create: `packages/quality/src/deadline-scheduler.ts`
-- Create: `packages/quality/test/deadline-scheduler.test.ts`
+**Files:** `packages/assets/src/cache.ts`, `packages/assets/test/cache.test.ts`, `apps/cli/src/build-graph.ts`, `apps/cli/test/invalidation.test.ts`.
 
 **Steps:**
+1. Key stages by normalized inputs, relevant configuration/version, seeds, and dependency hashes; use atomic writes and deduplicate concurrent identical requests.
+2. Cache narration chunks, static assets, resolved timelines, and suitable render outputs.
+3. Test unchanged reruns, text edits, voice/rate changes, visual-only edits, corruption, and interrupted writes.
+4. Narration-duration edits invalidate the downstream timeline/captions/composition, mux, and validation. Preserve unrelated audio/assets; never promise whole-video encoding is scene-local.
 
-1. Encode `preview`, `fast`, `balanced`, and `cinematic` policies.
-2. Add stage budgets and downgrade rules.
-3. Emit progress and downgrade events.
-4. Test simulated slow and failed providers.
-5. Ensure deterministic fallback completes the job.
-6. Commit.
+**Verification:** second unchanged build performs no redundant synthesis/capture/generation; pinned decoded media and intent/timeline hashes match, with cache evidence in paired reports.
 
-**Verification:** a simulated image/video generator timeout still yields a valid video before the test deadline.
+### Task 9: Add safe ingestion and an explicit director
 
-### Task 10: Add optional ComfyUI still generation
+**Objective:** Complete the text-to-video path without hiding a cloud dependency.
 
-**Objective:** Add visual variety without putting model generation on the critical path.
-
-**Files:**
-- Create: `packages/assets/src/providers/comfyui.ts`
-- Create: `services/local-models/workflows/explainer-still.json`
-- Create: `packages/assets/test/comfyui-contract.test.ts`
+**Files:** `packages/ingest/src/markdown.ts`, `packages/ingest/test/local-boundary.test.ts`, `packages/director/src/director.ts`, `packages/director/src/adapters/template.ts`, `packages/director/test/director.test.ts`, `docs/architecture/0003-director-backends.md`.
 
 **Steps:**
+1. Normalize local Markdown/plain text; enforce ADR 0001 canonical roots, traversal/symlink rules, limits, and non-execution policy.
+2. Implement a deterministic extractive/template director as the guaranteed offline fallback. State its limitations; do not label template extraction as AI summarization.
+3. Define the model adapter and schema-error retry contract, treating source content as untrusted data.
+4. Before adding a local model adapter, record the concrete runtime/model, installed prerequisites, license, output reliability, and real hardware benchmark in ADR 0003. Until selected and exercised, report it unavailable rather than assuming a local LLM exists.
+5. Cloud direction is optional, configured explicitly, and requires `--allow-cloud true`. Subscription-backed development tools are not implicit runtime API adapters.
+6. Integrate bounded narration rewriting for directors that support it; retain conservative speech-rate correction and explicit failure for infeasible durations.
 
-1. Detect ComfyUI and required models in `doctor`.
-2. Submit a pinned workflow through the local API.
-3. Capture workflow/model/node license metadata.
-4. Cache by normalized prompt, workflow hash, model hash, inputs, and seed.
-5. Implement deadline cancellation and deterministic fallback.
-6. Commit.
+**Verification:** the documented text-input golden command completes with cloud disabled using the offline fallback; a configured model adapter, if implemented, is tested separately. Invalid or unsupported input fails safely.
 
-**Verification:** with ComfyUI unavailable, `fast` still succeeds; with it available, a generated still is incorporated and fully recorded in the report.
+### Task 10: Upgrade voice and optional transcript QC
 
-### Task 11: Build the Revideo portability spike
+**Objective:** Add Kokoro and whisper.cpp only after the complete Apple path works.
 
-**Objective:** Prove that the manifest is not accidentally coupled to Remotion.
+**Files:** `services/local-models/kokoro_service.py`, `packages/audio/src/adapters/kokoro.ts`, `packages/audio/src/alignment/whisper-cpp.ts`, `packages/audio/src/qc/transcript-match.ts`, adapter contract tests.
 
-**Files:**
-- Create: `packages/renderer-revideo/`
-- Create: `packages/renderer-revideo/test/golden-render.test.ts`
-- Create: `docs/benchmarks/renderer-comparison.md`
+**Steps:** isolate Python dependencies; pin models/licenses; expose capabilities/health; retain timing provenance; test missing services, unreliable word timing, bad chunks, and deadline cancellation; use Apple/sentence fallback where allowed.
 
-**Steps:**
+**Verification:** golden builds exercise both real TTS backends when installed; unavailable ASR is explicitly reported; switching providers leaves public intent contracts neutral.
 
-1. Implement title, statement, diagram, and image scenes.
-2. Render the same golden manifest with both engines.
-3. Measure duration accuracy, render wall time, memory, audio sync, and visual parity.
-4. Record missing capabilities and migration cost.
-5. Decide whether Revideo remains a fallback or becomes the default.
-6. Commit.
+### Task 11: Complete deterministic assets and scene coverage
 
-**Verification:** both engines accept the same manifest and produce probe-valid media.
+**Objective:** Support local images, bullets, and safe static browser captures.
 
-### Task 12: Add final audiovisual validation
+**Files:** `packages/assets/src/provider.ts`, `packages/assets/src/providers/local-file.ts`, `packages/assets/src/providers/playwright.ts`, provider tests, remaining renderer scene components.
 
-**Objective:** Prevent a technically successful render from being declared complete when it is silent, truncated, or visually broken.
+**Steps:** enforce bounded media IDs and canonical reads; capture provenance/licenses; bundle static browser content/fonts; block and record browser network attempts; add per-provider deadlines/cancellation and cache reuse.
 
-**Files:**
-- Create: `packages/validation/src/media-probe.ts`
-- Create: `packages/validation/src/audio-qc.ts`
-- Create: `packages/validation/src/frame-sampler.ts`
-- Create: `packages/validation/src/report.ts`
-- Create: `packages/validation/test/golden-video.test.ts`
+**Verification:** ordinary/in-root symlink fixtures pass, traversal/dangling/escaping fixtures fail; a remote subresource attempt fails; unchanged captures are cached; all declared MVP scenes render.
 
-**Steps:**
+### Task 12: Add measured quality policies and deadline scheduling
 
-1. Validate streams, duration, resolution, and frame rate with ffprobe.
-2. Detect silence, clipping, black frames, frozen stretches, and missing captions.
-3. Sample frames at every scene boundary.
-4. Optionally run whisper.cpp against final mixed audio.
-5. Emit a machine-readable report and concise human summary.
-6. Commit.
+**Objective:** Expand from one reliable preview policy to explicit speed/quality choices.
 
-**Verification:** deliberately silent, truncated, and black test videos fail for the expected reason; the golden video passes.
+**Files:** `packages/quality/src/profiles.ts`, `packages/quality/src/deadline-scheduler.ts`, scheduler tests.
 
-### Task 13: Add the local Studio after the CLI is stable
+**Steps:** add fast after measuring preview; define balanced/cinematic as documented policies without pretending deferred generators exist; reserve time for rendering/mux/validation; bound cancellation and optional stages; emit downgrade events.
 
-**Objective:** Provide review and targeted regeneration without turning the MVP into a full nonlinear editor.
+**Verification:** fault-injected optional-stage slowness falls back within a controlled test budget. Impossible mandatory-stage deadlines fail explicitly; a valid-video guarantee is not claimed for arbitrary deadlines.
 
-**Files:**
-- Create: `apps/studio/`
+### Task 13: Complete releasable MVP validation and benchmarks
 
-**Scope:**
+**Objective:** Exercise every full-MVP acceptance gate before declaring release readiness.
 
-- import or open a production manifest;
-- preview video and scene boundaries;
-- edit script, scene type, visual prompt, and profile;
-- regenerate one narration chunk, asset, scene, or the whole video;
-- compare preview and final outputs;
-- display provenance, license, cache, and timing metadata.
+**Files:** `packages/validation/src/audio-qc.ts`, `packages/validation/src/frame-sampler.ts`, golden/bad-media tests, `docs/benchmarks/acceptance.md` measured records.
 
-**Verification:** changing one scene invalidates only that scene and downstream mux/report stages, not unrelated generated assets.
+**Steps:** test silent/truncated/black media; distinguish intentional static scenes from broken freezes; run preview/fast cold/warm builds, determinism comparisons, boundary fixtures, external-egress deny harness, and optional-service fault injection; pin QC thresholds; retain raw reports; watch complete outputs.
+
+**Verification:** every applicable full-MVP acceptance row has real evidence and required human approval. Target misses remain reported misses.
+
+### Task 14: Revideo portability spike — Post-MVP, before renderer settlement
+
+**Files:** `packages/renderer-revideo/`, golden render tests, `docs/benchmarks/renderer-comparison.md`.
+
+Render the unchanged complete golden manifest with both engines, covering every instantiated scene and cue or predeclared neutral fallback. Compare timing, sync, visual coverage, wall time, memory, licensing, and migration cost. A reduced fixture is not a pass. Keep adapter boundaries from Task 3; do not build a second engine before the first local milestone.
+
+### Task 15: Optional ComfyUI assets — Post-MVP
+
+**Files:** `packages/assets/src/providers/comfyui.ts`, pinned workflows and contract tests.
+
+Add generated stills only after real benchmarks, license review, caching, provenance, and bounded cancellation. Absence of ComfyUI must never break preview/fast. Generated video and avatars remain separate deferred experiments.
+
+### Task 16: Local Studio — Post-MVP
+
+**Files:** `apps/studio/` and invalidation integration tests.
+
+Add manifest review, preview, script/visual edits, targeted regeneration, and provenance display. Visual-only edits retain unrelated narration/assets; narration edits retain unrelated chunks/assets but invalidate affected downstream timing and composition. Verify reuse explicitly; do not promise scene-local final encoding.
 
 ## 11. MVP Boundary
 
-The first releasable version should include:
+The first milestone is the prepared-manifest Apple/preview video defined in Task 7. It is intentionally narrower than release readiness. The first releasable version should include:
 
 - Markdown/plain-text input;
-- schema-constrained direction;
+- schema-constrained direction with a guaranteed offline extractive/template fallback and explicit model-adapter availability;
 - Apple voice plus Kokoro;
 - sentence captions and optional word timing;
-- deterministic title, text, bullets, diagram, code, image, and outro scenes;
+- deterministic title, statement/kinetic labels, bullets, diagram, comparison, code, image, and outro scenes;
 - Remotion renderer;
 - Playwright/local asset providers;
 - four quality profiles;
@@ -601,7 +540,7 @@ Explicitly defer:
 
 ## 12. Acceptance Criteria
 
-A milestone is complete only when all of the following are exercised on the actual machine:
+The releasable MVP is complete only when all of the following are exercised on the actual machine. The narrower first-milestone gates are separately defined in `docs/benchmarks/acceptance.md`:
 
 1. `explain-to-me build fixtures/inputs/whisper-vs-tts.md --profile preview` produces all promised artifacts.
 2. The output video contains both audio and video streams and matches narration duration within a documented tolerance.
@@ -609,7 +548,7 @@ A milestone is complete only when all of the following are exercised on the actu
 4. The final narration passes transcript-match QC or clearly reports why that check was skipped.
 5. A second warm-cache build performs no redundant TTS, capture, or generation work.
 6. Killing ComfyUI or withholding optional model assets does not prevent `preview` or `fast` completion.
-7. A scene-level edit regenerates only affected stages.
+7. Visual-only edits preserve unrelated narration/assets. Narration-duration edits invalidate downstream timeline/captions/composition, mux, and validation while preserving unrelated chunks/assets.
 8. The benchmark report records actual wall time, stage timings, hardware, cold/warm cache status, and profile downgrades.
 9. Renderer and model licenses are captured with pinned versions.
 10. The rendered video is watched end to end; automated probes alone are insufficient for final approval.
@@ -626,7 +565,7 @@ Use the subject already exposed by this research: **"Whisper is not text-to-spee
 - a comparison scene;
 - deterministic visuals requiring no external image model.
 
-Build it first with the macOS voice and `preview`, then rerun with Kokoro and `fast`. Only after those runs are timed and validated should generated stills or avatars be added.
+Build the prepared golden manifest first with the macOS voice and `preview`, including mux/validation and an end-to-end human watch. Then add caching and offline direction, rerun with Kokoro and `fast`, and complete full MVP acceptance. Portability work, generated stills, and Studio follow the releasable MVP; avatars remain deferred.
 
 ## Sources
 

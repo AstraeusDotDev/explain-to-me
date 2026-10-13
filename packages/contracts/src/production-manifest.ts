@@ -1,0 +1,197 @@
+import { z } from "zod";
+
+export type SceneKind = "title" | "statement" | "diagram" | "comparison" | "code" | "outro";
+
+export interface NarrationChunk {
+  id: string;
+  text: string;
+}
+
+export interface VisualNode {
+  id: string;
+  label: string;
+}
+
+export interface Cue {
+  chunkId: string;
+  tokenIndex: number;
+  action: "highlight";
+  target: string;
+  timingFallback: "sentence-start";
+}
+
+export interface Scene {
+  id: string;
+  kind: SceneKind;
+  title: string;
+  narration: NarrationChunk[];
+  visual: {
+    subtitle?: string;
+    lines?: string[];
+    nodes?: VisualNode[];
+    edges?: { from: string; to: string }[];
+    left?: { title: string; lines: string[] };
+    right?: { title: string; lines: string[] };
+    code?: string;
+  };
+  cues?: Cue[];
+}
+
+export interface ProductionManifest {
+  version: "1";
+  title: string;
+  profile: "preview";
+  targetDurationMs: number;
+  theme: "technical-whiteboard";
+  scenes: Scene[];
+}
+
+export const MAX_MANIFEST_BYTES = 128 * 1024;
+export const MAX_TOTAL_NARRATION_WORDS = 3_000;
+export const MANIFEST_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+const boundedId = z.string().min(1).max(64).regex(MANIFEST_ID_PATTERN);
+const shortText = z.string().min(1).max(180);
+const lineList = z.array(z.string().min(1).max(240)).min(1).max(12);
+
+const narrationChunkSchema = z.strictObject({
+  id: boundedId,
+  text: z.string().min(1).max(1_600),
+});
+
+const visualNodeSchema = z.strictObject({ id: boundedId, label: shortText });
+const edgeSchema = z.strictObject({ from: boundedId, to: boundedId });
+
+const visualSchema = z.strictObject({
+  subtitle: z.string().min(1).max(180).optional(),
+  lines: z.array(z.string().min(1).max(240)).max(12).optional(),
+  nodes: z.array(visualNodeSchema).max(32).optional(),
+  edges: z.array(edgeSchema).max(64).optional(),
+  left: z.strictObject({ title: shortText, lines: lineList }).optional(),
+  right: z.strictObject({ title: shortText, lines: lineList }).optional(),
+  code: z.string().min(1).max(2_400).optional(),
+});
+
+const cueSchema = z.strictObject({
+  chunkId: boundedId,
+  tokenIndex: z.number().int().min(0).max(1_000),
+  action: z.literal("highlight"),
+  target: boundedId,
+  timingFallback: z.literal("sentence-start"),
+});
+
+const sceneSchema = z.strictObject({
+  id: boundedId,
+  kind: z.enum(["title", "statement", "diagram", "comparison", "code", "outro"]),
+  title: shortText,
+  narration: z.array(narrationChunkSchema).min(1).max(8),
+  visual: visualSchema,
+  cues: z.array(cueSchema).max(64).optional(),
+});
+
+const productionManifestStructureSchema = z.strictObject({
+  version: z.literal("1"),
+  title: z.string().min(1).max(120),
+  profile: z.literal("preview"),
+  targetDurationMs: z.number().int().min(10_000).max(600_000),
+  theme: z.literal("technical-whiteboard"),
+  scenes: z.array(sceneSchema).min(3).max(16),
+});
+
+export const productionManifestSchema = productionManifestStructureSchema.superRefine((manifest, ctx) => {
+  const sceneIds = new Set<string>();
+  const chunkIds = new Set<string>();
+  let narrationWords = 0;
+  let narrationCharacters = 0;
+
+  for (const [sceneIndex, scene] of manifest.scenes.entries()) {
+    if (sceneIds.has(scene.id)) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "id"], message: `Duplicate scene id: ${scene.id}` });
+    }
+    sceneIds.add(scene.id);
+
+    if (scene.kind === "diagram" && (scene.visual.nodes?.length ?? 0) < 2) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "nodes"], message: "Diagram scenes require at least two visual nodes" });
+    }
+    if (scene.kind === "comparison" && (!scene.visual.left || !scene.visual.right)) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual"], message: "Comparison scenes require both left and right panels" });
+    }
+    if (scene.kind === "code" && !scene.visual.code) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "code"], message: "Code scenes require a code card" });
+    }
+
+    const localChunks = new Map<string, string>();
+    for (const [chunkIndex, chunk] of scene.narration.entries()) {
+      if (chunkIds.has(chunk.id)) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "narration", chunkIndex, "id"], message: `Duplicate narration chunk id: ${chunk.id}` });
+      }
+      chunkIds.add(chunk.id);
+      localChunks.set(chunk.id, chunk.text);
+      const tokens = normalizeTokens(chunk.text);
+      if (tokens.length === 0) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "narration", chunkIndex, "text"], message: "Narration text must contain at least one non-whitespace token" });
+      }
+      narrationWords += tokens.length;
+      narrationCharacters += chunk.text.length;
+    }
+
+    const nodeIds = new Set<string>();
+    for (const [nodeIndex, node] of (scene.visual.nodes ?? []).entries()) {
+      if (nodeIds.has(node.id)) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "nodes", nodeIndex, "id"], message: `Duplicate visual node id: ${node.id}` });
+      }
+      nodeIds.add(node.id);
+    }
+
+    const edgesSeen = new Set<string>();
+    for (const [edgeIndex, edge] of (scene.visual.edges ?? []).entries()) {
+      if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "edges", edgeIndex], message: `Edge references missing node ${!nodeIds.has(edge.from) ? edge.from : edge.to}` });
+      }
+      const key = `${edge.from}\u0000${edge.to}`;
+      if (edgesSeen.has(key)) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "edges", edgeIndex], message: "Duplicate visual edge" });
+      }
+      edgesSeen.add(key);
+    }
+
+    for (const [cueIndex, cue] of (scene.cues ?? []).entries()) {
+      const text = localChunks.get(cue.chunkId);
+      if (!text) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "cues", cueIndex, "chunkId"], message: `Cue references missing chunk ${cue.chunkId}` });
+      } else if (cue.tokenIndex >= normalizeTokens(text).length) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "cues", cueIndex, "tokenIndex"], message: `Cue token index ${cue.tokenIndex} is outside its narration chunk` });
+      }
+      if (!nodeIds.has(cue.target)) {
+        ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "cues", cueIndex, "target"], message: `Cue references missing visual node ${cue.target}` });
+      }
+    }
+  }
+
+  if (narrationWords > MAX_TOTAL_NARRATION_WORDS) {
+    ctx.addIssue({ code: "custom", path: ["scenes"], message: `Narration is limited to ${MAX_TOTAL_NARRATION_WORDS} normalized words` });
+  }
+  if (narrationCharacters > 24_000) {
+    ctx.addIssue({ code: "custom", path: ["scenes"], message: "Narration is limited to 24,000 total characters" });
+  }
+  if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > MAX_MANIFEST_BYTES) {
+    ctx.addIssue({ code: "custom", message: `Manifest exceeds ${MAX_MANIFEST_BYTES} bytes` });
+  }
+});
+
+export const productionManifestJsonSchema = {
+  ...z.toJSONSchema(productionManifestStructureSchema),
+  $comment: "Cross-field checks for duplicate identifiers, scene-kind requirements, cue chunk/token references, cue targets, and edge endpoints are enforced by productionManifestSchema at runtime.",
+};
+
+export function normalizeTokens(text: string): string[] {
+  const trimmed = text.trim();
+  return trimmed.length === 0 ? [] : trimmed.split(/\s+/u);
+}
+
+export function formatManifestIssues(error: z.ZodError): string[] {
+  return error.issues.map((issue) => {
+    const path = issue.path.length === 0 ? "manifest" : issue.path.join(".");
+    return `${path}: ${issue.message}`;
+  });
+}
