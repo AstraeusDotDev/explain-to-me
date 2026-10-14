@@ -2,9 +2,37 @@
 
 `explain-to-me` is a local-first pipeline that turns a source artifact into a narrated, captioned explainer video. The system uses model-backed stages to create a constrained production plan, then uses measured narration timing and a deterministic renderer to produce and validate the final media.
 
-This repository now contains an executable prepared-manifest preview pipeline, local Kokoro neural narration, and persistent narration/render caching. Automatic text-to-video direction and richer profiles remain later work. Automated media checks pass; full human approval and process-wide zero-egress verification remain pending.
+This repository now builds videos from local Markdown/plain-text documents or prepared manifests, with local model-backed or extractive direction, Kokoro narration, measured sentence/phrase captions, source code/bullets/images, and persistent caching. Only the `preview` profile and technical-whiteboard visual theme are implemented. Full human approval and process-wide zero-egress verification remain pending.
 
-## Current iteration: neural narration and cached builds
+## Current iteration: document-to-video
+
+```bash
+# Setup only: downloads verified local assets. Requires an installed llama-server.
+python3 scripts/setup-kokoro.py
+python3 scripts/setup-director.py
+
+# Run from this checkout; no runtime package/browser/model downloads.
+npm exec --cache .cache/npm --offline --yes pnpm@10.18.3 -- explain-to-me build fixtures/inputs/cached-builds/document.md --director local --tts kokoro --voice af_heart --duration 60s --audience "software engineers" --pronunciations fixtures/inputs/cached-builds/pronunciations.json --output out/my-document-explainer
+
+# A real, explicitly extractive plain-text path; not AI summarization.
+npm exec --cache .cache/npm --offline --yes pnpm@10.18.3 -- explain-to-me build fixtures/inputs/local-builds.txt --director template --tts kokoro --duration 45s --output out/my-template-explainer
+```
+
+Director modes:
+
+- `auto` (default): use the installed local backend; report an explicit extractive fallback if unavailable or planning fails.
+- `local`: require local llama.cpp/Qwen3-4B-Instruct-2507 Q4_K_M; fail rather than silently substitute a template or subscription/cloud API. The current macOS adapter resolves `/opt/homebrew/bin/llama-server` and runs its own bounded server on a private Unix-domain socket, with an allowlisted environment and owned-process cleanup.
+- `template`: select/extract source material deterministically, without claiming semantic summarization.
+
+The director selects three through five body scenes, retains source order and nearby explanatory context, and compiles exact source code and approved assets. Its model response is schema-constrained with per-scene source IDs and a bounded word budget. Source mappings aid review; they do not prove generated claims are true. `--audience` and `--style` influence narration, not arbitrary renderer code or a new visual theme.
+
+Narration is split into sentence/phrase chunks before synthesis. Caption boundaries come from each chunk's measured PCM samples, not proportional sentence estimates or word alignment. An optional `--pronunciations <map.json>` accepts literal term-to-spoken-text entries such as `{"PCM":"P C M"}`; visible captions/code retain the original text. Existing prepared manifests are normalized through the same path.
+
+Markdown supports headings, paragraphs, lists, fenced code and local raster references. Links, HTML and code are inert; image syntax inside inline/fenced code is not fetched. PNG/JPEG/WebP assets are bounded to eight images, 8 MiB each and 32 MiB total, resolved within approved roots, hash-checked, and copied into `assets/` beside the output manifest. That saved manifest can be built again using `--manifest` without the original Markdown file. The renderer receives approved copied bytes, not model-authored URLs or file paths.
+
+Verified demonstration: `out/phase-3-reviewed-cold/video.mp4`, generated from the fresh caching document with no manually authored manifest. The 59.875-second video has seven scenes, twelve measured caption chunks, code, bullets and the document's PNG diagram. Fresh-cache time through automated validation was 52.90 seconds; unchanged warm time was 3.44 seconds, reusing direction, all twelve speech chunks and rendered frames. See `docs/benchmarks/phase-3-results.md` for evidence, compatibility checks, failed probes and remaining review gates.
+
+## Phase 2: neural narration and cached builds
 
 The narrator defaults to `--tts auto`: use local Kokoro (`af_heart`) when its runtime/models are installed, otherwise fall back explicitly to Apple speech. `--tts kokoro` fails clearly if unavailable; `--tts apple --voice Samantha` retains the original narrator. Voice quality is a listening decision, not something signal checks can approve.
 
@@ -28,7 +56,7 @@ The approved execution order begins with a prepared manifest, Apple speech, meas
 pnpm explain-to-me build --manifest fixtures/golden-manifests/whisper-vs-tts.json --profile preview --duration 60s --tts apple --voice Samantha
 ```
 
-It produces all six artifacts and passes the golden automated media checks; end-to-end human approval is still required. No runtime LLM, downloaded TTS model, browser capture provider, or cloud service is required. Caching and Kokoro are now implemented in phase 2; text ingestion/direction and richer quality policies remain later work. Caption subdivisions within measured narration chunks use proportional estimates, not forced alignment.
+It produces all six artifacts and passes the golden automated media checks; end-to-end human approval is still required. This prepared-manifest/Apple path needs no runtime LLM, downloaded TTS model, browser capture provider, or cloud service. The original milestone used proportional sentence subdivisions; current builds instead normalize narration into measured sentence/phrase chunks. Richer quality profiles remain later work.
 
 ### Setup and run
 
@@ -60,13 +88,13 @@ The MVP accepts:
 - local images referenced by the input or supplied as project assets; and
 - build options selecting the profile, requested duration, audience, and style.
 
-The later text-to-video path includes an offline extractive/template director, explicitly distinguished from model summarization. A local model backend requires a concrete selection and real benchmark; cloud direction requires configured opt-in. Requested duration is checked after synthesis with at most two bounded corrections; infeasible requests fail rather than truncate speech or pad long silence.
+The current text-to-video path includes an offline extractive/template director, explicitly distinguished from local model summarization. Requested duration is checked after synthesis with at most two bounded speech-rate corrections; infeasible requests fail rather than truncate speech or pad long silence. A small or over-compressed script may require a shorter requested duration.
 
 Local image references must resolve, after canonicalization, within the authoritative input or project-assets roots defined by the system-boundary decision. Nonexistent targets, traversal outside those roots, and symlink escapes are rejected; an in-root symlink whose resolved target remains in-root is allowed. Network pages, PDFs, source-code ingestion, arbitrary JSON, remote images, imported audio, and video clips are deferred from the MVP input contract.
 
-The CLI is local-first: `--allow-cloud` defaults to `false`. In that mode every stage—including direction, assets, TTS, rendering, and validation—must make zero external network requests, and source text and images must not leave the machine. Cloud-backed stages require explicit opt-in and auditable, content-safe provenance.
+The intended offline contract is zero external network requests and no source text/images leaving the machine. No cloud provider or `--allow-cloud` flag is implemented. Model inference uses HTTP over a private Unix socket, and renderer requests are origin-restricted/audited, but whole-process no-egress verification is still unproven. Any future cloud stage requires explicit opt-in and auditable, content-safe provenance.
 
-The planned command shape is:
+The later richer-profile command shape (not implemented yet) is:
 
 ```bash
 explain-to-me build input.md \
@@ -76,10 +104,11 @@ explain-to-me build input.md \
   --style "friendly technical whiteboard"
 ```
 
-The golden acceptance command is:
+The current document demonstration command is:
 
 ```bash
-explain-to-me build fixtures/inputs/whisper-vs-tts.md \
+explain-to-me build fixtures/inputs/cached-builds/document.md \
+  --director local \
   --profile preview \
   --duration 60s
 ```
@@ -96,7 +125,7 @@ A successful build writes a job output directory containing:
 | `report.json` | Machine-readable validation, provenance, resolved asset hashes, pinned adapters/models/configuration/seeds/environment, stage timing, cache state, profile downgrade, and license results. |
 | project files (optional) | Editable scene and asset files when explicitly requested. |
 
-Artifact names are stable. The eventual CLI may add an output-directory option, but it must not silently rename or omit required artifacts.
+Artifact names are stable. `--output` selects a new output directory; existing targets are refused. Copied local assets and scene-boundary PNG samples are additional supporting files.
 
 `manifest.json` alone is not an exact-reproduction record. Exact reproduction requires the complete build record: the manifest plus `report.json` provenance, resolved asset hashes, and the pinned adapter/model versions, configuration, seeds, and environment. Provider- and renderer-specific execution metadata belongs in that build record, not in `ProductionManifest`.
 

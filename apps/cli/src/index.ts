@@ -35,6 +35,10 @@ import {
   validateRenderedMedia,
 } from "../../../packages/validation/src/qc.js";
 import type { Timeline } from "../../../packages/timeline/src/timeline.js";
+import type { RenderRequest, RenderResult as RendererResult } from "../../../packages/renderer-core/src/renderer.js";
+import { loadDocument, resolveManifestAssets, type SourceDocument, type ResolvedAsset } from "../../../packages/ingest/src/markdown.js";
+import { directDocument, localDirectorReadiness } from "../../../packages/director/src/director.js";
+import { prepareNarration } from "../../../packages/audio/src/prepare-narration.js";
 import { ContentAddressedCache } from "../../../packages/assets/src/cache.js";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -47,7 +51,12 @@ const DURATION_PATTERN = /^(\d+(?:\.\d+)?)(ms|s|m)$/u;
 const RENDER_ENTRY = resolve(PROJECT_ROOT, "apps/renderer-remotion/src/render.ts");
 
 interface CliOptions {
-  manifestPath: string;
+  manifestPath?: string;
+  inputPath?: string;
+  directorMode: "auto" | "template" | "local";
+  audience: string;
+  style: string;
+  pronunciationPath?: string;
   profile: "preview";
   targetDurationMs?: number;
   outputPath?: string;
@@ -56,26 +65,7 @@ interface CliOptions {
   cacheDir: string;
 }
 
-interface RendererResult {
-  outputPath: string;
-  renderer: string;
-  browserExecutable: string;
-  version: string;
-  durationInFrames: number;
-  wallTimeMs: number;
-  warnings: string[];
-  network: { externalAttempts: string[] };
-}
-
-type RenderVideo = (request: {
-  manifest: ProductionManifest;
-  timeline: Timeline;
-  outputPath: string;
-  width: number;
-  height: number;
-  fps: number;
-  concurrency?: number;
-}) => Promise<RendererResult>;
+type RenderVideo = (request: RenderRequest) => Promise<RendererResult>;
 
 interface RendererModule {
   getBrowserIdentity: () => { path: string; version: string; chromeMode: string } | null;
@@ -142,6 +132,8 @@ async function doctor(args: string[]): Promise<void> {
 
   const neural = kokoroReadiness();
   statuses.push({ name: "Kokoro neural narrator (optional)", path: null, ready: neural.ready, detail: neural.reason });
+  const localDirector = localDirectorReadiness();
+  statuses.push({ name: "Local model director (optional)", path: null, ready: localDirector.ready, detail: localDirector.reason });
   const rendererReady = await pathExists(RENDER_ENTRY);
   let chrome: string | null = null;
   let browserError = "";
@@ -164,46 +156,67 @@ async function doctor(args: string[]): Promise<void> {
 
   const checks = statuses.map((item) => `${item.ready ? "OK" : item.name === "Remotion renderer entry" || item.name === "Chrome/Chromium" ? "PENDING" : "MISSING"}  ${item.name}${item.path ? ` — ${item.path}` : ""}${item.detail ? ` (${item.detail})` : ""}`);
   process.stdout.write(`${checks.join("\n")}\n`);
-  const coreReady = statuses.filter((item) => item.name !== "Kokoro neural narrator (optional)").every((item) => item.ready);
+  const coreReady = statuses.filter((item) => !["Kokoro neural narrator (optional)", "Local model director (optional)"].includes(item.name)).every((item) => item.ready);
   if (!coreReady) throw new Error("Required local audio/video tools are unavailable; install them before building.");
 }
 
 async function build(options: CliOptions): Promise<void> {
   const invocationStart = performance.now();
   await assertBuildPrerequisites(options.voice, options.backend);
-  const manifestSourcePath = resolve(options.manifestPath);
-  const manifestFileInfo = await stat(manifestSourcePath);
-  if (manifestFileInfo.size > MAX_MANIFEST_BYTES) throw new Error(`Manifest exceeds the ${MAX_MANIFEST_BYTES}-byte input limit`);
-  const manifestInput = await readFile(manifestSourcePath, "utf8");
-  let rawManifest: unknown;
-  try {
-    rawManifest = JSON.parse(manifestInput) as unknown;
-  } catch (error) {
-    throw new Error(`Manifest is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const parsed = productionManifestSchema.safeParse(rawManifest);
-  if (!parsed.success) throw new Error(`Manifest validation failed:\n${formatManifestIssues(parsed.error).map((issue) => `  - ${issue}`).join("\n")}`);
-  const manifest = (options.targetDurationMs === undefined
-    ? parsed.data
-    : { ...parsed.data, targetDurationMs: options.targetDurationMs }) as ProductionManifest;
-  const buildId = randomUUID();
-  const finalOutput = await chooseOutputPath(options.outputPath, manifest.title, buildId);
-  if (await pathExists(finalOutput)) throw new Error(`Output target already exists; choose a new path: ${finalOutput}`);
-  const outputParent = dirname(finalOutput);
-  const stagingPath = join(outputParent, `.${finalOutput.split(/[\\/]/u).at(-1)!}.staging-${buildId}`);
-  const tempRoot = await mkdtemp(join(tmpdir(), "explain-to-me-build-"));
-  await mkdir(stagingPath);
+  if (options.outputPath && await pathExists(resolve(options.outputPath))) throw new Error("Output target already exists; choose a new directory");
   const stageTimingsMs: Record<string, number> = {};
   const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
     const started = performance.now();
-    try {
-      return await fn();
-    } finally {
-      stageTimingsMs[name] = roundMs(performance.now() - started);
-    }
+    try { return await fn(); }
+    finally { stageTimingsMs[name] = roundMs(performance.now() - started); }
   };
-
+  const inputFile = resolve(options.inputPath ?? options.manifestPath!);
+  let rawManifest: unknown;
+  let document: SourceDocument | undefined;
+  let direction: {
+    method: string; warnings: string[]; provenance: Record<string, unknown>;
+    cacheStats: { hits: number; misses: number; writes: number; corruptions: number };
+    sourceReferences: Record<string, string[]>;
+  } = { method: "prepared-manifest", warnings: [], provenance: {}, cacheStats: { hits: 0, misses: 0, writes: 0, corruptions: 0 }, sourceReferences: {} };
+  if (options.inputPath) {
+    document = await timed("ingestion", () => loadDocument(inputFile, { projectRoot: process.cwd() }));
+    direction = await timed("direction", async () => {
+      const directed = await directDocument(document!, {
+        durationMs: options.targetDurationMs ?? 60_000,
+        audience: options.audience, style: options.style, mode: options.directorMode, cacheDir: options.cacheDir,
+      });
+      rawManifest = directed.manifest;
+      return directed;
+    });
+  } else {
+    await timed("manifestRead", async () => {
+      const info = await stat(inputFile);
+      if (!info.isFile() || info.size > MAX_MANIFEST_BYTES) throw new Error(`Manifest must be a regular file within ${MAX_MANIFEST_BYTES} bytes`);
+      const input = await readFile(inputFile, "utf8");
+      if (Buffer.byteLength(input) > MAX_MANIFEST_BYTES) throw new Error("Manifest grew beyond the input limit while reading");
+      try { rawManifest = JSON.parse(input); }
+      catch { throw new Error("Manifest is not valid JSON"); }
+    });
+  }
+  const parsed = productionManifestSchema.safeParse(rawManifest);
+  if (!parsed.success) throw new Error(`Manifest validation failed:\n${formatManifestIssues(parsed.error).map((issue) => `  - ${issue}`).join("\n")}`);
+  const initialManifest = (options.targetDurationMs === undefined ? parsed.data : { ...parsed.data, targetDurationMs: options.targetDurationMs }) as ProductionManifest;
+  const pronunciationConfig = await loadPronunciations(options.pronunciationPath);
+  const prepared = await timed("narrationPreparation", async () => prepareNarration(initialManifest, pronunciationConfig.map));
+  let manifest: ProductionManifest = productionManifestSchema.parse(prepared.manifest) as ProductionManifest;
+  const resolvedAssets = await timed("assetResolution", () => resolveManifestAssets(manifest, inputFile, { projectRoot: process.cwd() }));
+  const buildId = randomUUID();
+  const finalOutput = await chooseOutputPath(options.outputPath, manifest.title, buildId);
+  if (await pathExists(finalOutput)) throw new Error(`Output target already exists; choose a new path: ${finalOutput}`);
+  const stagingPath = join(dirname(finalOutput), `.${finalOutput.split(/[\\/]/u).at(-1)!}.staging-${buildId}`);
+  const tempRoot = await mkdtemp(join(tmpdir(), "explain-to-me-build-"));
+  await mkdir(stagingPath, { mode: 0o700 });
+  let executionAssets: NonNullable<RenderRequest["assets"]> = {};
   try {
+    executionAssets = await timed("assetCopy", () => materializeAssets(resolvedAssets, stagingPath));
+    if (manifest.assets?.length) {
+      manifest = { ...manifest, assets: manifest.assets.map((asset) => ({ ...asset, source: `assets/${asset.id}.${assetExtension(asset.mimeType)}` })) };
+    }
     const synthesis = await timed("narrationSynthesis", () => synthesizeNarration({
       manifest,
       voice: options.voice,
@@ -236,6 +249,7 @@ async function build(options: CliOptions): Promise<void> {
       width: DEFAULT_WIDTH,
       height: DEFAULT_HEIGHT,
       fps: DEFAULT_FPS,
+      assets: executionAssets,
     };
     const renderKey = renderCache.key("render-video-v1", {
       manifest, timeline: timeline.timeline,
@@ -299,6 +313,16 @@ async function build(options: CliOptions): Promise<void> {
     const report = {
       reportVersion: 1,
       buildId,
+      input: {
+        kind: document ? document.sourcePath.endsWith(".txt") ? "plain-text" : "markdown" : "prepared-manifest",
+        sourcePath: document?.sourcePath ?? inputFile,
+        sourceSha256: document?.sha256 ?? createHash("sha256").update(await readFile(inputFile)).digest("hex"),
+        blocks: document?.blocks.map((block) => ({ id: block.id, kind: block.kind, startLine: block.startLine, endLine: block.endLine })) ?? [],
+        warnings: document?.warnings ?? [],
+      },
+      direction: { ...direction, audience: options.audience, style: options.style, cloudCalls: [] },
+      narrationPreparation: { stats: prepared.stats, warnings: prepared.warnings, pronunciations: pronunciationConfig.provenance },
+      assets: resolvedAssets.map((asset) => ({ id: asset.id, source: asset.source, canonicalPath: asset.path, sha256: asset.sha256, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes })),
       createdAt: new Date().toISOString(),
       status: "automated-checks-passed-egress-unverified",
       profile: manifest.profile,
@@ -340,10 +364,10 @@ async function build(options: CliOptions): Promise<void> {
         chunks: timeline.timeline.chunks,
       },
       captions: {
-        method: "sentence spans apportioned within each measured narration chunk by normalized token count",
+        method: "one caption per measured sentence/phrase audio chunk",
         formats: ["WebVTT", "SRT"],
         segmentCount: media.captionCount,
-        timingMethod: "measured chunk boundaries; proportional sentence subdivisions (not forced alignment)",
+        timingMethod: "measured sentence/phrase chunk boundaries; no proportional subdivisions or word-alignment claim",
         narrationChunksCovered: media.coveredChunkCount,
         sentenceStartCueFallbacks: fallbackCues,
       },
@@ -438,7 +462,7 @@ function parseBuildOptions(args: string[]): CliOptions {
       continue;
     }
     const key = argument.slice(2);
-    if (!["manifest", "profile", "duration", "output", "voice", "tts", "cache-dir"].includes(key)) {
+    if (!["manifest", "profile", "duration", "output", "voice", "tts", "cache-dir", "director", "audience", "style", "pronunciations"].includes(key)) {
       throw new Error(`Unknown build option --${key}`);
     }
     const value = args[index + 1];
@@ -447,11 +471,11 @@ function parseBuildOptions(args: string[]): CliOptions {
     values.set(key, value);
     index += 1;
   }
-  if (positionals.length > 0) {
-    throw new Error("Prepared text input is unsupported in milestone 1. Use --manifest fixtures/golden-manifests/whisper-vs-tts.json.");
-  }
+  if (positionals.length > 1) throw new Error("build accepts one local Markdown/plain-text source");
+  const inputPath = positionals[0];
   const manifestPath = values.get("manifest");
-  if (!manifestPath) throw new Error("build requires --manifest <local-json-file>");
+  if (Boolean(inputPath) === Boolean(manifestPath)) throw new Error("Choose one source file or --manifest, not both");
+  if (manifestPath && ["director", "audience", "style"].some((key) => values.has(key))) throw new Error("Director/audience/style options apply to document inputs, not prepared manifests");
   const profile = values.get("profile") ?? "preview";
   if (profile !== "preview") throw new Error("Milestone 1 supports only --profile preview");
   const duration = values.get("duration");
@@ -459,8 +483,17 @@ function parseBuildOptions(args: string[]): CliOptions {
   const outputPath = values.get("output");
   const backend = values.get("tts") ?? "auto";
   if (!["auto", "apple", "kokoro"].includes(backend)) throw new Error("--tts must be auto, apple, or kokoro");
+  const directorMode = values.get("director") ?? "auto";
+  if (!["auto", "template", "local"].includes(directorMode)) throw new Error("--director must be auto, template, or local");
+  const audience = values.get("audience") ?? "software engineers";
+  const style = values.get("style") ?? "friendly technical whiteboard";
+  if (audience.length > 240 || style.length > 240) throw new Error("Audience/style hints are limited to 240 characters");
   return {
-    manifestPath,
+    ...(manifestPath === undefined ? {} : { manifestPath }),
+    ...(inputPath === undefined ? {} : { inputPath }),
+    directorMode: directorMode as "auto" | "template" | "local",
+    audience, style,
+    ...(values.get("pronunciations") === undefined ? {} : { pronunciationPath: values.get("pronunciations")! }),
     profile,
     ...(targetDurationMs === undefined ? {} : { targetDurationMs }),
     ...(outputPath === undefined ? {} : { outputPath }),
@@ -503,6 +536,46 @@ async function loadRenderer(): Promise<RendererModule> {
   } catch (error) {
     throw new Error(`Could not load apps/renderer-remotion/src/render.ts: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+async function loadPronunciations(path: string | undefined): Promise<{ map: Record<string, string>; provenance: Record<string, unknown> }> {
+  if (!path) return { map: {}, provenance: { source: null, sha256: null } };
+  const filename = resolve(path);
+  const info = await stat(filename);
+  if (!info.isFile() || info.size > 32_768) throw new Error("Pronunciation file must be a regular JSON file within 32 KiB");
+  const bytes = await readFile(filename);
+  if (bytes.length > 32_768) throw new Error("Pronunciation file exceeds the size limit");
+  const value: unknown = JSON.parse(bytes.toString("utf8"));
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Pronunciation dictionary must be a JSON object of literal term-to-spoken-text strings");
+  const entries = Object.entries(value);
+  if (entries.length > 64 || entries.some(([key, spoken]) => !key.trim() || key.length > 80 || typeof spoken !== "string" || !spoken.trim() || spoken.length > 160)) {
+    throw new Error("Pronunciation dictionary is limited to 64 non-empty terms (80 chars) and spoken values (160 chars)");
+  }
+  return { map: Object.fromEntries(entries) as Record<string, string>, provenance: { source: filename, sha256: createHash("sha256").update(bytes).digest("hex") } };
+}
+
+function assetExtension(mimeType: string): string {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  throw new Error("Unsupported raster asset type");
+}
+
+async function materializeAssets(assets: ResolvedAsset[], stagingPath: string): Promise<NonNullable<RenderRequest["assets"]>> {
+  const result: NonNullable<RenderRequest["assets"]> = {};
+  if (!assets.length) return result;
+  const directory = join(stagingPath, "assets");
+  await mkdir(directory, { mode: 0o700 });
+  for (const asset of assets) {
+    const bytes = await readFile(asset.path);
+    if (bytes.length > 8 * 1024 * 1024 || createHash("sha256").update(bytes).digest("hex") !== asset.sha256) {
+      throw new Error(`Asset changed after approved resolution: ${asset.id}`);
+    }
+    const path = join(directory, `${asset.id}.${assetExtension(asset.mimeType)}`);
+    await writeFile(path, bytes, { mode: 0o600 });
+    result[asset.id] = { path, sha256: asset.sha256, mimeType: asset.mimeType };
+  }
+  return result;
 }
 
 async function rendererSourceHashes(): Promise<Record<string, string>> {
@@ -565,13 +638,16 @@ function roundMs(milliseconds: number): number {
 
 function printHelp(): void {
   process.stdout.write([
-    "explain-to-me — prepared-manifest local video preview",
+    "explain-to-me — local document-to-video explainer",
     "",
     "Commands:",
     "  explain-to-me doctor",
-    "  explain-to-me build --manifest <file.json> [--profile preview] [--duration 60s] [--output <new-dir>] [--tts auto|apple|kokoro] [--voice af_heart] [--cache-dir <dir>]",
+    "  explain-to-me build <input.md|input.txt> [--director auto|local|template] [--duration 60s] [--audience <text>] [--style <hint>]",
+    "  explain-to-me build --manifest <file.json> [--duration 60s]",
+    "  Options: --output <new-dir> --tts auto|apple|kokoro --voice <id> --cache-dir <dir> --pronunciations <map.json>",
     "",
-    "Prepared text input is unsupported in milestone 1. Build output is written only to a new directory.",
+    "Models are installed during setup only; runtime direction stays local. Template mode is extractive, not AI summarization.",
+    "Build output is written only to a new directory. Current visual theme/profile is technical-whiteboard/preview.",
   ].join("\n") + "\n");
 }
 

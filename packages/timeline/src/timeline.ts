@@ -1,5 +1,4 @@
 import type { ProductionManifest } from "../../contracts/src/production-manifest.js";
-import { normalizeTokens } from "../../contracts/src/production-manifest.js";
 
 export interface TimedChunk {
   id: string;
@@ -98,35 +97,19 @@ export function buildTimeline(
 export function createSentenceCaptions(
   manifest: ProductionManifest,
   timeline: Timeline,
-  sampleRate = 24_000,
+  _sampleRate = 24_000,
 ): CaptionSegment[] {
-  const sceneById = new Map(manifest.scenes.map((scene) => [scene.id, scene]));
-  const captions: CaptionSegment[] = [];
-  for (const timedChunk of timeline.chunks) {
-    const sentences = splitSentences(timedChunk.text);
-    const tokenCounts = sentences.map((sentence) => normalizeTokens(sentence).length);
-    const totalTokens = tokenCounts.reduce((sum, count) => sum + count, 0);
-    const totalSamples = Math.round(((timedChunk.endMs - timedChunk.startMs) * sampleRate) / 1_000);
-    let completedTokens = 0;
-    const sceneId = timedChunk.sceneId;
-    if (!sceneById.has(sceneId)) throw new Error(`Timeline references unknown scene ${sceneId}`);
-
-    sentences.forEach((sentence, index) => {
-      const startSamples = Math.round((completedTokens / totalTokens) * totalSamples);
-      completedTokens += tokenCounts[index]!;
-      const endSamples = index === sentences.length - 1
-        ? totalSamples
-        : Math.round((completedTokens / totalTokens) * totalSamples);
-      captions.push({
-        chunkId: timedChunk.id,
-        sceneId,
-        text: sentence,
-        startMs: timedChunk.startMs + samplesToMs(startSamples, sampleRate),
-        endMs: index === sentences.length - 1 ? timedChunk.endMs : timedChunk.startMs + samplesToMs(endSamples, sampleRate),
-      });
-    });
-  }
-  return captions;
+  const sceneIds = new Set(manifest.scenes.map((scene) => scene.id));
+  return timeline.chunks.map((timedChunk) => {
+    if (!sceneIds.has(timedChunk.sceneId)) throw new Error(`Timeline references unknown scene ${timedChunk.sceneId}`);
+    return {
+      chunkId: timedChunk.id,
+      sceneId: timedChunk.sceneId,
+      text: timedChunk.text,
+      startMs: timedChunk.startMs,
+      endMs: timedChunk.endMs,
+    };
+  });
 }
 
 export function renderWebVtt(captions: CaptionSegment[]): string {
@@ -143,10 +126,6 @@ function samplesToMs(samples: number, sampleRate: number): number {
 
 function frameBoundary(samples: number, fps: number, sampleRate: number): number {
   return Math.round((samples * fps) / sampleRate);
-}
-
-function splitSentences(text: string): string[] {
-  return text.trim().split(/(?<=[.!?])\s+/u).map((sentence) => sentence.trim()).filter(Boolean);
 }
 
 function formatTimestamp(milliseconds: number, decimal: "." | ","): string {

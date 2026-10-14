@@ -1,10 +1,18 @@
 import { z } from "zod";
 
-export type SceneKind = "title" | "statement" | "diagram" | "comparison" | "code" | "outro";
+export type SceneKind = "title" | "statement" | "diagram" | "comparison" | "code" | "outro" | "bullets" | "image";
 
 export interface NarrationChunk {
   id: string;
   text: string;
+  spokenText?: string;
+}
+
+export interface LocalAssetIntent {
+  id: string;
+  source: string;
+  sha256: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
 }
 
 export interface VisualNode {
@@ -33,6 +41,7 @@ export interface Scene {
     left?: { title: string; lines: string[] };
     right?: { title: string; lines: string[] };
     code?: string;
+    assetId?: string;
   };
   cues?: Cue[];
 }
@@ -44,6 +53,7 @@ export interface ProductionManifest {
   targetDurationMs: number;
   theme: "technical-whiteboard";
   scenes: Scene[];
+  assets?: LocalAssetIntent[];
 }
 
 export const MAX_MANIFEST_BYTES = 128 * 1024;
@@ -57,6 +67,7 @@ const lineList = z.array(z.string().min(1).max(240)).min(1).max(12);
 const narrationChunkSchema = z.strictObject({
   id: boundedId,
   text: z.string().min(1).max(1_600),
+  spokenText: z.string().min(1).max(1_600).optional(),
 });
 
 const visualNodeSchema = z.strictObject({ id: boundedId, label: shortText });
@@ -70,6 +81,7 @@ const visualSchema = z.strictObject({
   left: z.strictObject({ title: shortText, lines: lineList }).optional(),
   right: z.strictObject({ title: shortText, lines: lineList }).optional(),
   code: z.string().min(1).max(2_400).optional(),
+  assetId: boundedId.optional(),
 });
 
 const cueSchema = z.strictObject({
@@ -82,11 +94,18 @@ const cueSchema = z.strictObject({
 
 const sceneSchema = z.strictObject({
   id: boundedId,
-  kind: z.enum(["title", "statement", "diagram", "comparison", "code", "outro"]),
+  kind: z.enum(["title", "statement", "diagram", "comparison", "code", "outro", "bullets", "image"]),
   title: shortText,
-  narration: z.array(narrationChunkSchema).min(1).max(8),
+  narration: z.array(narrationChunkSchema).min(1).max(32),
   visual: visualSchema,
   cues: z.array(cueSchema).max(64).optional(),
+});
+
+const localAssetSchema = z.strictObject({
+  id: boundedId,
+  source: z.string().min(1).max(512).refine((value) => !value.startsWith("/") && !value.includes("\\") && !value.includes("\0") && !/^[a-z][a-z0-9+.-]*:/i.test(value) && !value.split("/").includes(".."), "Asset source must be a bounded relative local path without traversal"),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
 });
 
 const productionManifestStructureSchema = z.strictObject({
@@ -96,6 +115,7 @@ const productionManifestStructureSchema = z.strictObject({
   targetDurationMs: z.number().int().min(10_000).max(600_000),
   theme: z.literal("technical-whiteboard"),
   scenes: z.array(sceneSchema).min(3).max(16),
+  assets: z.array(localAssetSchema).max(8).optional(),
 });
 
 export const productionManifestSchema = productionManifestStructureSchema.superRefine((manifest, ctx) => {
@@ -103,6 +123,11 @@ export const productionManifestSchema = productionManifestStructureSchema.superR
   const chunkIds = new Set<string>();
   let narrationWords = 0;
   let narrationCharacters = 0;
+  const assetIds = new Set<string>();
+  for (const [assetIndex, asset] of (manifest.assets ?? []).entries()) {
+    if (assetIds.has(asset.id)) ctx.addIssue({ code: "custom", path: ["assets", assetIndex, "id"], message: "Duplicate asset id" });
+    assetIds.add(asset.id);
+  }
 
   for (const [sceneIndex, scene] of manifest.scenes.entries()) {
     if (sceneIds.has(scene.id)) {
@@ -120,6 +145,15 @@ export const productionManifestSchema = productionManifestStructureSchema.superR
       ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "code"], message: "Code scenes require a code card" });
     }
 
+    if (scene.kind === "bullets" && !(scene.visual.lines?.length)) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual"], message: "Bullet scenes require lines" });
+    }
+    if (scene.kind === "image" && (!scene.visual.assetId || !assetIds.has(scene.visual.assetId))) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "assetId"], message: "Image scenes require an approved asset id" });
+    }
+    if (scene.kind !== "image" && scene.visual.assetId !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["scenes", sceneIndex, "visual", "assetId"], message: "Asset references are allowed only on image scenes" });
+    }
     const localChunks = new Map<string, string>();
     for (const [chunkIndex, chunk] of scene.narration.entries()) {
       if (chunkIds.has(chunk.id)) {
@@ -168,6 +202,7 @@ export const productionManifestSchema = productionManifestStructureSchema.superR
     }
   }
 
+  if (chunkIds.size > 128) ctx.addIssue({ code: "custom", path: ["scenes"], message: "Narration is limited to 128 audio chunks" });
   if (narrationWords > MAX_TOTAL_NARRATION_WORDS) {
     ctx.addIssue({ code: "custom", path: ["scenes"], message: `Narration is limited to ${MAX_TOTAL_NARRATION_WORDS} normalized words` });
   }

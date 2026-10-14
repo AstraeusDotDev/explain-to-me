@@ -1,0 +1,15 @@
+A local explainer build combines a source document, spoken narration, captions, and deterministic video scenes. Repeated builds should avoid doing expensive work again when the relevant inputs have not changed.
+
+Narration keys include the spoken text, voice, speed, and the identity of the installed speech model. A matching request can reuse its measured PCM samples rather than synthesize another copy of the audio.
+
+A cached entry stores a payload digest and the request key that originally produced it. The build rejects corrupted bytes and rejects valid bytes stored under a different request key.
+
+Rendering keys include scene intent, measured timing, approved image hashes, and the renderer environment. An unchanged visual request can reuse its rendered frames while still creating a new output directory.
+
+Measured audio chunks define the start and end of each caption interval in the timeline. The displayed caption remains readable even when a pronunciation dictionary changes the words sent to the narrator.
+
+Visual-only edits can reuse existing narration while asking the renderer for a new set of frames. Changing the voice or spoken text instead invalidates the corresponding audio requests and can change scene timing.
+
+Every published video still goes through muxing, stream probing, caption checks, and audio signal checks. Cache reuse does not count as human listening approval or proof that every process made no external network requests.
+
+The final result is reusable expensive work with explicit validation for every newly published video. The source remains local, and source code displayed in a scene is not executed by the video pipeline.

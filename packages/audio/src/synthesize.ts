@@ -71,10 +71,11 @@ const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../.."
 const SAY_EXECUTABLE = "/usr/bin/say";
 
 const narrationItems = (manifest: ProductionManifest) => manifest.scenes.flatMap((scene) => scene.narration);
+const spokenText = (chunk: ReturnType<typeof narrationItems>[number]) => chunk.spokenText ?? chunk.text;
 
 export async function synthesizeNarration(options: SynthesisOptions): Promise<NarrationSynthesis> {
   const chunks = narrationItems(options.manifest);
-  const wordCount = chunks.reduce((total, chunk) => total + normalizeTokens(chunk.text).length, 0);
+  const wordCount = chunks.reduce((total, chunk) => total + normalizeTokens(spokenText(chunk)).length, 0);
   if (wordCount === 0) throw new Error("Cannot synthesize an empty narration script");
   if (!Number.isFinite(options.targetDurationMs) || options.targetDurationMs <= 0) {
     throw new Error("Target duration must be a positive number of milliseconds");
@@ -192,7 +193,7 @@ async function synthesizeApple(
     saySha256: createHash("sha256").update(await readFile(SAY_EXECUTABLE)).digest("hex"),
     platform: process.platform, arch: process.arch, node: process.version, osRelease: release(),
   };
-  const wordCount = chunks.reduce((total, chunk) => total + normalizeTokens(chunk.text).length, 0);
+  const wordCount = chunks.reduce((total, chunk) => total + normalizeTokens(spokenText(chunk)).length, 0);
   let rateWpm = clampRate(Math.round((wordCount * 60_000) / targetDurationMs));
   const attempts: SpeechRateAttempt[] = [];
   let lastOutput: Omit<SynthesisOutput, "attempts" | "durationMs"> | undefined;
@@ -239,12 +240,13 @@ async function synthesizeAppleAtRate(
   for (const [index, chunk] of chunks.entries()) {
     const base = join(workDir, `attempt-${attempt}-chunk-${String(index + 1).padStart(2, "0")}`);
     const wavePath = `${base}.wav`;
-    const key = cache.key("apple-pcm-chunk-v1", { ...identity, voice, text: chunk.text, rateWpm, sampleRate: PCM_SAMPLE_RATE, channels: PCM_CHANNELS });
+    const text = spokenText(chunk);
+    const key = cache.key("apple-pcm-chunk-v1", { ...identity, voice, text, rateWpm, sampleRate: PCM_SAMPLE_RATE, channels: PCM_CHANNELS });
     const pcm = await cache.getOrCreate(key, async () => {
       runProcess(SAY_EXECUTABLE, [
         "-v", voice, "-r", String(rateWpm), "--file-format=WAVE",
         `--data-format=LEI16@${PCM_SAMPLE_RATE}`, `--channels=${PCM_CHANNELS}`,
-        "-o", wavePath, chunk.text,
+        "-o", wavePath, text,
       ]);
       try {
         return extractPcmDataFromWav(await readFile(wavePath));

@@ -154,7 +154,7 @@ async function synthesizeAtSpeed(
 ): Promise<Pick<KokoroOutput, "pcmPath" | "chunks" | "totalSamples">> {
   const keyed = chunks.map((chunk) => ({
     chunk,
-    key: cache.key("kokoro-pcm-chunk-v1", { backend: "kokoro", ...identity, voice, text: chunk.text, speed, sampleRate: SAMPLE_RATE }),
+    key: cache.key("kokoro-pcm-chunk-v1", { backend: "kokoro", ...identity, voice, text: spokenText(chunk), speed, sampleRate: SAMPLE_RATE }),
   }));
   const loaded = await Promise.all(keyed.map(async (item) => ({ ...item, pcm: await cache.read(item.key) })));
   const missing = loaded.filter((item) => item.pcm === null);
@@ -167,7 +167,7 @@ async function synthesizeAtSpeed(
     await mkdir(runDir);
     try {
       const requests = missing.map((item, index) => ({
-        id: item.chunk.id, text: item.chunk.text, outputPath: join(runDir, `chunk-${String(index + 1).padStart(3, "0")}.pcm`),
+        id: item.chunk.id, text: spokenText(item.chunk), outputPath: join(runDir, `chunk-${String(index + 1).padStart(3, "0")}.pcm`),
       }));
       const input = JSON.stringify({ modelPath: MODEL, voicesPath: VOICES, voice, speed, chunks: requests });
       const stdout = runBridge(input);
@@ -222,10 +222,15 @@ function validateChunks(chunks: NarrationChunk[]): void {
   let total = 0;
   for (const chunk of chunks) {
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(chunk.id)) throw new Error(`Invalid Kokoro narration chunk id: ${chunk.id}`);
-    if (!chunk.text.trim() || chunk.text.length > MAX_CHUNK_CHARS) throw new Error(`Kokoro chunk ${chunk.id} must contain 1 to ${MAX_CHUNK_CHARS} characters`);
-    total += chunk.text.length;
+    const text = spokenText(chunk);
+    if (!text.trim() || text.length > MAX_CHUNK_CHARS) throw new Error(`Kokoro chunk ${chunk.id} must contain 1 to ${MAX_CHUNK_CHARS} spoken characters`);
+    total += text.length;
   }
   if (total > MAX_TOTAL_CHARS) throw new Error(`Kokoro narration exceeds ${MAX_TOTAL_CHARS} total characters`);
+}
+
+function spokenText(chunk: NarrationChunk): string {
+  return chunk.spokenText ?? chunk.text;
 }
 
 function parseBridgeResult(stdout: string, expectedIds: string[]): Map<string, number> {

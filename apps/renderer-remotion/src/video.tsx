@@ -5,6 +5,8 @@ import {
   Sequence,
   interpolate,
   spring,
+  Img,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -17,6 +19,7 @@ export type VideoProps = {
   width?: number;
   height?: number;
   fps?: number;
+  assetFilesById?: Record<string, string>;
 };
 
 type TimedScene = Timeline["scenes"][number];
@@ -118,29 +121,7 @@ function sceneAccent(scene: Scene): string {
   return C.teal;
 }
 
-function sentenceEnd(token: string): boolean {
-  return /[.!?…]["'”’)}\]]*$/.test(token);
-}
-
-function sentenceTokenRange(tokens: string[], tokenIndex: number): [number, number] {
-  let start = 0;
-  for (let i = Math.min(tokenIndex, tokens.length - 1) - 1; i >= 0; i -= 1) {
-    if (sentenceEnd(tokens[i] ?? "")) {
-      start = i + 1;
-      break;
-    }
-  }
-  let end = tokens.length;
-  for (let i = Math.max(start, tokenIndex); i < tokens.length; i += 1) {
-    if (sentenceEnd(tokens[i] ?? "")) {
-      end = i + 1;
-      break;
-    }
-  }
-  return [start, end];
-}
-
-/** Resolve the schema's declared sentence-start fallback against the measured chunk interval. */
+/** Resolve the sentence-start fallback to its measured chunk interval without estimating token offsets. */
 export function resolveCueWindows(manifest: ProductionManifest, timeline: Timeline): CueWindow[] {
   const byId = new Map<string, TimedChunk>();
   for (const chunk of timeline.chunks) byId.set(chunk.id, chunk);
@@ -150,16 +131,11 @@ export function resolveCueWindows(manifest: ProductionManifest, timeline: Timeli
       if (cue.timingFallback !== "sentence-start") continue;
       const chunk = byId.get(cue.chunkId);
       if (!chunk) continue;
-      const tokens = chunk.text.trim().split(/\s+/).filter(Boolean);
-      if (!tokens.length) continue;
-      const targetIndex = Math.max(0, Math.min(tokens.length - 1, cue.tokenIndex));
-      const [sentenceStart, sentenceEnd] = sentenceTokenRange(tokens, targetIndex);
-      const perTokenMs = (chunk.endMs - chunk.startMs) / tokens.length;
       windows.push({
         sceneId: scene.id,
         target: cue.target,
-        startMs: chunk.startMs + sentenceStart * perTokenMs,
-        endMs: chunk.startMs + sentenceEnd * perTokenMs,
+        startMs: chunk.startMs,
+        endMs: chunk.endMs,
       });
     }
   }
@@ -640,6 +616,86 @@ function OutroScene({ scene, accent, width }: { scene: Scene; accent: string; wi
   );
 }
 
+function BulletsScene({ scene, accent, width, height, durationInFrames }: {
+  scene: Scene;
+  accent: string;
+  width: number;
+  height: number;
+  durationInFrames: number;
+}) {
+  const frame = useCurrentFrame();
+  const lines = (scene.visual.lines ?? []).slice(0, 12);
+  const maxWidth = Math.min(1020, width - 210);
+  const listHeight = Math.max(80, height - 365);
+  const size = fitFontSize(lines.join("\n"), maxWidth - 42, listHeight - lines.length * 7, 38, 10, 1.16);
+  const progress = clamp01((frame + 1) / Math.max(1, durationInFrames));
+  const visibleCount = Math.min(lines.length, Math.max(1, Math.ceil(progress * lines.length)));
+  const titleSize = fitFontSize(scene.title, maxWidth, 100, 58, 18, 1.08);
+  return (
+    <ContentFrame maxWidth={1080}>
+      <div style={{ marginTop: 17, color: accent, fontSize: 14, letterSpacing: 2.2, fontWeight: 800, textTransform: "uppercase" }}>
+        {scene.visual.subtitle ?? "Key points"}
+      </div>
+      <div style={{ marginTop: 10, maxWidth, fontFamily: SERIF, fontSize: titleSize, lineHeight: 1.08, letterSpacing: -1.5, fontWeight: 700, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+        {scene.title}
+      </div>
+      <div style={{ width: 72, height: 4, backgroundColor: accent, marginTop: 14, borderRadius: 4 }} />
+      <div style={{ flex: 1, minHeight: 0, marginTop: 14, display: "flex", flexDirection: "column", justifyContent: "center", gap: lines.length > 6 ? 7 : 12 }}>
+        {lines.slice(0, visibleCount).map((line, index) => (
+          <div key={`${index}-${line}`} style={{ display: "flex", alignItems: "flex-start", gap: 17 }}>
+            <span style={{ flex: "0 0 auto", width: Math.max(7, size * 0.25), height: Math.max(7, size * 0.25), marginTop: size * 0.47, borderRadius: "50%", backgroundColor: accent }} />
+            <div style={{ color: C.ink, fontSize: size, lineHeight: 1.16, fontWeight: 560, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{line}</div>
+          </div>
+        ))}
+      </div>
+    </ContentFrame>
+  );
+}
+
+function ImageScene({ scene, accent, width, height, assetFilesById }: {
+  scene: Scene;
+  accent: string;
+  width: number;
+  height: number;
+  assetFilesById: Record<string, string>;
+}) {
+  const maxWidth = Math.min(1100, width - 190);
+  const details = scene.visual.lines ?? [];
+  const detailHeight = Math.min(height * 0.34, Math.max(48, details.length * 24));
+  const titleSize = fitFontSize(scene.title, maxWidth, 86, 46, 18, 1.08);
+  const assetFileName = scene.visual.assetId ? assetFilesById[scene.visual.assetId] : undefined;
+  const safeAssetFileName = typeof assetFileName === "string" && /^asset-\d{2}\.(?:png|jpg|webp)$/.test(assetFileName)
+    ? assetFileName
+    : undefined;
+  return (
+    <ContentFrame maxWidth={1140}>
+      {scene.visual.subtitle && (
+        <div style={{ marginTop: 10, color: accent, fontSize: 14, letterSpacing: 1.9, fontWeight: 800, textTransform: "uppercase", overflowWrap: "anywhere" }}>
+          {scene.visual.subtitle}
+        </div>
+      )}
+      <div style={{ marginTop: scene.visual.subtitle ? 8 : 14, maxWidth, fontFamily: SERIF, fontSize: titleSize, lineHeight: 1.08, letterSpacing: -1.4, fontWeight: 700, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+        {scene.title}
+      </div>
+      <div style={{ width: 72, height: 4, backgroundColor: accent, marginTop: 12, borderRadius: 4 }} />
+      <div style={{ flex: 1, minHeight: 100, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", padding: 9, border: `1px solid ${C.line}`, borderRadius: 15, backgroundColor: C.sheet, overflow: "hidden" }}>
+        {safeAssetFileName && (
+          <Img
+            src={staticFile(safeAssetFileName)}
+            alt={scene.visual.subtitle ?? scene.title}
+            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          />
+        )}
+      </div>
+      {details.length > 0 && (
+        <div style={{ flex: "0 0 auto", height: detailHeight, marginTop: 8 }}>
+          <SupportingCopy lines={details} width={maxWidth} height={detailHeight} accent={accent} preferred={17} />
+        </div>
+      )}
+    </ContentFrame>
+  );
+}
+
 function SceneView({
   scene,
   index,
@@ -647,6 +703,8 @@ function SceneView({
   activeTargets,
   width,
   height,
+  durationInFrames,
+  assetFilesById,
 }: {
   scene: Scene;
   index: number;
@@ -654,13 +712,14 @@ function SceneView({
   activeTargets: Set<string>;
   width: number;
   height: number;
+  durationInFrames: number;
+  assetFilesById: Record<string, string>;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const accent = sceneAccent(scene);
   const entrance = spring({ frame, fps, config: { damping: 22, stiffness: 100, mass: 0.72 } });
   const reveal = clamp01(interpolate(frame, [0, Math.max(1, fps * 0.65)], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) }));
-  const translateY = interpolate(entrance, [0, 1], [19, 0]);
   let content: React.ReactNode;
   switch (scene.kind) {
     case "title":
@@ -681,12 +740,20 @@ function SceneView({
     case "outro":
       content = <OutroScene scene={scene} accent={accent} width={width} />;
       break;
+    case "bullets":
+      content = <BulletsScene scene={scene} accent={accent} width={width} height={height} durationInFrames={durationInFrames} />;
+      break;
+    case "image":
+      content = <ImageScene scene={scene} accent={accent} width={width} height={height} assetFilesById={assetFilesById} />;
+      break;
   }
+  const contentScale = scene.kind === "image" ? 1.002 - 0.002 * clamp01(entrance) : 1.012 - 0.012 * clamp01(entrance);
+  const initialOffsetY = scene.kind === "image" ? 3 : 19;
   return (
     <AbsoluteFill>
       <PaperBackdrop accent={accent} />
       <Topline scene={scene} index={index} count={count} accent={accent} />
-      <div style={{ position: "absolute", inset: 0, opacity: clamp01(entrance), transform: `translateY(${translateY}px) scale(${1.012 - 0.012 * clamp01(entrance)})`, transformOrigin: "50% 52%" }}>
+      <div style={{ position: "absolute", inset: 0, opacity: clamp01(entrance), transform: `translateY(${interpolate(entrance, [0, 1], [initialOffsetY, 0])}px) scale(${contentScale})`, transformOrigin: "50% 52%" }}>
         {content}
       </div>
       <div style={{ position: "absolute", left: 75, right: 75, bottom: 105, height: 2, background: "rgba(24,44,45,.12)" }}>
@@ -701,25 +768,9 @@ function currentChunk(chunks: TimedChunk[], frame: number, fps: number): TimedCh
   return chunks.find((chunk) => elapsedMs >= chunk.startMs && elapsedMs < chunk.endMs);
 }
 
-function currentSentence(chunk: TimedChunk | undefined, frame: number, fps: number): string | undefined {
-  if (!chunk) return undefined;
-  const sentences = chunk.text.trim().split(/(?<=[.!?])\s+/u).map((sentence) => sentence.trim()).filter(Boolean);
-  if (sentences.length <= 1) return chunk.text;
-  const wordCounts = sentences.map((sentence) => sentence.split(/\s+/u).filter(Boolean).length);
-  const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
-  const elapsedMs = (frame / fps) * 1000;
-  const progress = clamp01((elapsedMs - chunk.startMs) / Math.max(1, chunk.endMs - chunk.startMs));
-  let wordBoundary = 0;
-  for (let index = 0; index < sentences.length; index += 1) {
-    wordBoundary += wordCounts[index] ?? 0;
-    if (progress < wordBoundary / totalWords || index === sentences.length - 1) return sentences[index];
-  }
-  return sentences[sentences.length - 1];
-}
-
-function Caption({ chunk, text, accent, width, height }: { chunk: TimedChunk | undefined; text: string | undefined; accent: string; width: number; height: number }) {
+function Caption({ chunk, accent, width, height }: { chunk: TimedChunk | undefined; accent: string; width: number; height: number }) {
   if (!chunk) return null;
-  const captionText = text ?? chunk.text;
+  const captionText = chunk.text;
   const size = fitFontSize(captionText, width - 68, height - 20, 22, 3, 1.18);
   return (
     <div
@@ -745,7 +796,7 @@ function Caption({ chunk, text, accent, width, height }: { chunk: TimedChunk | u
   );
 }
 
-export const Video: React.FC<VideoProps> = ({ manifest, timeline, width = 1280, height = 720 }) => {
+export const Video: React.FC<VideoProps> = ({ manifest, timeline, width = 1280, height = 720, assetFilesById = {} }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const cueWindows = resolveCueWindows(manifest, timeline);
@@ -753,7 +804,6 @@ export const Video: React.FC<VideoProps> = ({ manifest, timeline, width = 1280, 
   const timedChunk = currentChunk(timeline.chunks, frame, fps);
   const currentScene = timedChunk ? sceneById.get(timedChunk.sceneId) : undefined;
   const captionAccent = currentScene ? sceneAccent(currentScene) : C.teal;
-  const captionText = currentSentence(timedChunk, frame, fps);
   const activeByScene = new Map<string, Set<string>>();
   const nowMs = (frame / fps) * 1000;
   for (const cue of cueWindows) {
@@ -770,11 +820,11 @@ export const Video: React.FC<VideoProps> = ({ manifest, timeline, width = 1280, 
         if (!scene || timedScene.durationInFrames <= 0) return null;
         return (
           <Sequence key={scene.id} from={timedScene.from} durationInFrames={timedScene.durationInFrames} name={scene.title}>
-            <SceneView scene={scene} index={index} count={manifest.scenes.length} activeTargets={activeByScene.get(scene.id) ?? new Set<string>()} width={width} height={height} />
+            <SceneView scene={scene} index={index} count={manifest.scenes.length} activeTargets={activeByScene.get(scene.id) ?? new Set<string>()} width={width} height={height} durationInFrames={timedScene.durationInFrames} assetFilesById={assetFilesById} />
           </Sequence>
         );
       })}
-      <Caption chunk={timedChunk} text={captionText} accent={captionAccent} width={width} height={height} />
+      <Caption chunk={timedChunk} accent={captionAccent} width={width} height={height} />
     </AbsoluteFill>
   );
 };

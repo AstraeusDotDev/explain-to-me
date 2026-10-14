@@ -1,13 +1,13 @@
 import { createServer, request as httpRequest, type ClientRequest, type IncomingMessage, type Server } from "node:http";
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { delimiter, dirname, extname, join, normalize, resolve, sep } from "node:path";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { delimiter, dirname, extname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { execFileSync } from "node:child_process";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import type { RenderRequest, RenderResult } from "../../../packages/renderer-core/src/renderer.js";
+import type { RenderAsset, RenderRequest, RenderResult } from "../../../packages/renderer-core/src/renderer.js";
 
 const REMOTION_PIN = "4.0.535";
 const COMPOSITION_ID = "ExplainToMe";
@@ -19,12 +19,17 @@ const MIME_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".webp": "image/webp",
   ".svg": "image/svg+xml",
   ".map": "application/json; charset=utf-8",
   ".wasm": "application/wasm",
 };
 
-export { type RenderRequest, type RenderResult } from "../../../packages/renderer-core/src/renderer.js";
+const MAX_RENDER_ASSET_BYTES = 8 * 1024 * 1024;
+
+export { type RenderAsset, type RenderRequest, type RenderResult } from "../../../packages/renderer-core/src/renderer.js";
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -338,6 +343,88 @@ function validateRequest(request: RenderRequest): void {
     throw new Error("Render concurrency must be a positive integer.");
   }
   if (!request.outputPath.trim()) throw new Error("Render outputPath must not be empty.");
+  renderAssetIds(request);
+}
+
+function renderAssetIds(request: RenderRequest): string[] {
+  const declared = new Map((request.manifest.assets ?? []).map((asset) => [asset.id, asset]));
+  if (declared.size !== (request.manifest.assets ?? []).length) throw new Error("Render manifest contains duplicate asset ids.");
+
+  const imageIds = new Set<string>();
+  for (const scene of request.manifest.scenes) {
+    if (scene.kind !== "image") continue;
+    const assetId = scene.visual.assetId;
+    if (!assetId) throw new Error(`Image scene ${scene.id} is missing its approved asset id.`);
+    imageIds.add(assetId);
+  }
+
+  const provided = request.assets ?? {};
+  if (typeof provided !== "object" || provided === null || Array.isArray(provided)) {
+    throw new Error("Render assets must be an object keyed by manifest asset id.");
+  }
+  for (const [assetId, asset] of Object.entries(provided)) {
+    if (!declared.has(assetId)) throw new Error(`Render request contains undeclared asset id ${assetId}.`);
+    const intent = declared.get(assetId);
+    if (!intent) throw new Error(`Image scene references undeclared asset id ${assetId}.`);
+    if (!asset || typeof asset !== "object") throw new Error(`Render asset ${assetId} is invalid.`);
+    if (typeof asset.path !== "string" || !isAbsolute(asset.path) || resolve(asset.path) !== asset.path) {
+      throw new Error(`Render asset ${assetId} path must be canonical and absolute.`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(asset.sha256) || asset.sha256 !== intent.sha256) {
+      throw new Error(`Render asset ${assetId} hash does not match the manifest.`);
+    }
+    if (asset.mimeType !== intent.mimeType) throw new Error(`Render asset ${assetId} MIME type does not match the manifest.`);
+  }
+  for (const assetId of imageIds) {
+    if (!Object.prototype.hasOwnProperty.call(provided, assetId)) {
+      throw new Error(`Image scene asset ${assetId} was not resolved to an approved local file.`);
+    }
+  }
+  return [...imageIds].sort();
+}
+
+function matchesImageSignature(contents: Buffer, mimeType: RenderAsset["mimeType"]): boolean {
+  if (mimeType === "image/png") {
+    return contents.length >= 8 && contents.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
+  if (mimeType === "image/jpeg") return contents.length >= 3 && contents[0] === 0xff && contents[1] === 0xd8 && contents[2] === 0xff;
+  return contents.length >= 12 && contents.toString("ascii", 0, 4) === "RIFF" && contents.toString("ascii", 8, 12) === "WEBP";
+}
+
+function extensionForImage(mimeType: RenderAsset["mimeType"]): string {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/jpeg") return "jpg";
+  return "webp";
+}
+
+async function copyAssetsIntoPublicDirectory(request: RenderRequest, directory: string): Promise<Record<string, string>> {
+  const publicDirectory = join(directory, "public-assets");
+  await mkdir(publicDirectory, { mode: 0o700 });
+  const assetFilesById: Record<string, string> = {};
+  const assetIds = renderAssetIds(request);
+  for (let index = 0; index < assetIds.length; index += 1) {
+    const assetId = assetIds[index]!;
+    const asset = request.assets![assetId]!;
+    const fileInfo = await lstat(asset.path);
+    if (!fileInfo.isFile() || fileInfo.isSymbolicLink()) throw new Error(`Render asset ${assetId} must be a regular local file.`);
+    if (fileInfo.size < 1 || fileInfo.size > MAX_RENDER_ASSET_BYTES) {
+      throw new Error(`Render asset ${assetId} must be between 1 byte and ${MAX_RENDER_ASSET_BYTES} bytes.`);
+    }
+    if (await realpath(asset.path) !== asset.path) throw new Error(`Render asset ${assetId} path is not canonical.`);
+
+    const contents = await readFile(asset.path);
+    if (contents.byteLength < 1 || contents.byteLength > MAX_RENDER_ASSET_BYTES) {
+      throw new Error(`Render asset ${assetId} changed size during validation.`);
+    }
+    const actualHash = createHash("sha256").update(contents).digest("hex");
+    if (actualHash !== asset.sha256) throw new Error(`Render asset ${assetId} bytes do not match the approved SHA-256 hash.`);
+    if (!matchesImageSignature(contents, asset.mimeType)) throw new Error(`Render asset ${assetId} bytes do not match ${asset.mimeType}.`);
+
+    const fileName = `asset-${String(index + 1).padStart(2, "0")}.${extensionForImage(asset.mimeType)}`;
+    await writeFile(join(publicDirectory, fileName), contents, { flag: "wx", mode: 0o600 });
+    assetFilesById[assetId] = fileName;
+  }
+  return assetFilesById;
 }
 
 function formatNetworkError(attempts: Set<string>, cause: unknown): Error {
@@ -369,7 +456,9 @@ export async function renderVideo(request: RenderRequest): Promise<RenderResult>
   }
 
   const start = performance.now();
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "explain-to-me-render-"));
+  const renderScratch = join(process.cwd(), ".cache");
+  await mkdir(renderScratch, { recursive: true });
+  const temporaryRoot = await mkdtemp(join(renderScratch, "explain-to-me-render-"));
   const bundleDirectory = join(temporaryRoot, "bundle");
   let bundleServer: Server | undefined;
   let proxyServer: Server | undefined;
@@ -378,9 +467,12 @@ export async function renderVideo(request: RenderRequest): Promise<RenderResult>
   let renderError: unknown;
   try {
     await mkdir(dirname(outputPath), { recursive: true });
+    const assetFilesById = await copyAssetsIntoPublicDirectory(request, temporaryRoot);
     const generatedBundle = await bundle({
       entryPoint: resolve(process.cwd(), "apps/renderer-remotion/src/entry.tsx"),
       outDir: bundleDirectory,
+      publicDir: join(temporaryRoot, "public-assets"),
+      symlinkPublicDir: false,
       webpackOverride: (config) => ({
         ...config,
         resolve: {
@@ -411,6 +503,7 @@ export async function renderVideo(request: RenderRequest): Promise<RenderResult>
       width: request.width,
       height: request.height,
       fps: request.fps,
+      assetFilesById,
     };
     const sharedBrowserOptions = {
       serveUrl: served.origin,

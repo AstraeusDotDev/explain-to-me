@@ -1,9 +1,17 @@
-import type { ProductionManifest } from "../../contracts/src/production-manifest.js";
+import type { LocalAssetIntent, ProductionManifest } from "../../contracts/src/production-manifest.js";
 import type { Timeline } from "../../timeline/src/timeline.js";
+
+export type RenderAsset = {
+  /** Canonical, parent-approved local path to the image bytes. */
+  path: string;
+  sha256: string;
+  mimeType: LocalAssetIntent["mimeType"];
+};
 
 export interface RenderRequest {
   manifest: ProductionManifest;
   timeline: Timeline;
+  assets?: Record<string, RenderAsset>;
   outputPath: string;
   width: number;
   height: number;
