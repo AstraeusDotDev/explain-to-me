@@ -1,15 +1,26 @@
 {
   "name": "explain-to-me",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.3",
   "scripts": {
     "explain-to-me": "tsx apps/cli/src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test packages/*/src/*.test.ts",
+    "test": "tsx --test packages/*/src/*.test.ts apps/cli/src/*.test.ts",
+    "test:agent": "python3 -m unittest discover -s scripts -p 'test_agent_explainer.py'",
     "schema:manifest": "tsx packages/contracts/scripts/write-json-schema.ts"
   },
+  "description": "Local-first narrated, captioned explainer videos from documents and reviewed manifests",
+  "author": "Tommy Allsup",
+  "license": "MIT",
+  "homepage": "https://github.com/TommyAllsup/explain-to-me#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TommyAllsup/explain-to-me.git"
+  },
+  "bugs": { "url": "https://github.com/TommyAllsup/explain-to-me/issues" },
+  "engines": { "node": ">=24" },
   "dependencies": {
     "@remotion/bundler": "4.0.535",
     "@remotion/renderer": "4.0.535",

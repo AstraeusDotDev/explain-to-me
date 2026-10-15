@@ -90,6 +90,23 @@ interface LocalServer {
   exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
 }
 
+export interface PrivateSocketLocation {
+  directory: string;
+  socketPath: string;
+}
+
+/** Allocate only an owned private directory; never fall back to a shared socket or TCP. */
+export async function allocatePrivateSocketLocation(temporaryRoot: string = tmpdir()): Promise<PrivateSocketLocation> {
+  const directory = await mkdtemp(join(temporaryRoot, "d-"));
+  // llama-server selects Unix transport only for host paths ending in .sock.
+  const socketPath = join(directory, "s.sock");
+  if (Buffer.byteLength(socketPath) > 100) {
+    await rm(directory, { recursive: true, force: true });
+    throw new Error("Private director socket path exceeds the platform limit; use a shorter TMPDIR");
+  }
+  return { directory, socketPath };
+}
+
 export async function directDocument(doc: SourceDocument, options: DirectDocumentOptions): Promise<DirectorResult> {
   validateDocument(doc);
   validateOptions(options);
@@ -591,12 +608,7 @@ function boundedPromptBlocks(doc: SourceDocument, units: DirectionUnit[]): Array
 
 async function startLocalServer(identity: LocalIdentity): Promise<LocalServer> {
   await assertSameFile(identity.serverPath, identity.serverSha256);
-  const directory = await mkdtemp(join(tmpdir(), "etm-d-"));
-  const socketPath = join(directory, "server.sock");
-  if (Buffer.byteLength(socketPath) > 100) {
-    await rm(directory, { recursive: true, force: true });
-    throw new Error("Private director socket path exceeds the platform limit; use a shorter TMPDIR");
-  }
+  const { directory, socketPath } = await allocatePrivateSocketLocation();
   const args = [
     "--model", identity.modelPath,
     "--host", socketPath,

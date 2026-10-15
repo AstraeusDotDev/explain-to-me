@@ -8,6 +8,8 @@ out/
 .explain-to-me/
 *.log
 .env
+.env.*
 .venv/
 .venv-kokoro/
+.venv*/
 __pycache__/

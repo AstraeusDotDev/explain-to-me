@@ -8,6 +8,7 @@ import { ContentAddressedCache, type CacheStats } from "../../assets/src/cache.j
 import type { ProductionManifest } from "../../contracts/src/production-manifest.js";
 import { normalizeTokens } from "../../contracts/src/production-manifest.js";
 import { kokoroReadiness, synthesizeKokoro } from "./kokoro.js";
+import { narrationDurationError } from "./duration-error.js";
 export { kokoroReadiness } from "./kokoro.js";
 
 export const PCM_SAMPLE_RATE = 24_000;
@@ -219,7 +220,7 @@ async function synthesizeApple(
 
   if (!lastOutput || !attempts.at(-1)?.withinTolerance) {
     const summary = attempts.map((item) => `${item.rateWpm} WPM → ${(item.durationMs / 1_000).toFixed(3)}s`).join(", ");
-    throw new Error(
+    throw narrationDurationError(
       `Narration could not reach ${(targetDurationMs / 1_000).toFixed(3)}s within ±1.000s after ${attempts.length} synthesis attempt(s) (rate bounds ${MIN_RATE_WPM}-${MAX_RATE_WPM} WPM). Measured: ${summary}`,
     );
   }

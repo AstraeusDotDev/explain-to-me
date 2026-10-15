@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { directDocument } from "./director.js";
+import { allocatePrivateSocketLocation, directDocument } from "./director.js";
 import type { SourceDocument } from "../../ingest/src/markdown.js";
 
 test("template director keeps source references and compiles bullet, code, and image scenes", async () => {
-  const tempRoot = await mkdtemp(join(process.cwd(), ".cache", "director-test-"));
+  const tempRoot = await mkdtemp(join(tmpdir(), "director-test-"));
   try {
     const doc: SourceDocument = {
       sourcePath: join(tempRoot, "lesson.md"),
@@ -65,5 +66,41 @@ test("template director keeps source references and compiles bullet, code, and i
     assert.equal(changedSource.cacheStats.misses, 1);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("private socket allocation fits formerly failing roots and refuses oversized roots cleanly", async (t) => {
+  if (Buffer.byteLength(join(tmpdir(), "d-XXXXXX", "root", "d-XXXXXX", "s.sock")) > 100) {
+    t.skip("Use a shorter TMPDIR to exercise the socket-path regression");
+    return;
+  }
+  const fixture = await mkdtemp(join(tmpdir(), "d-"));
+  try {
+    let fittingPath = join(fixture, "root");
+    await mkdir(fittingPath);
+    while (Buffer.byteLength(join(fittingPath, "etm-d-XXXXXX", "server.sock")) <= 100) {
+      fittingPath = join(fittingPath, "abcdefghij");
+      await mkdir(fittingPath);
+    }
+    assert.ok(Buffer.byteLength(join(fittingPath, "etm-d-XXXXXX", "server.sock")) > 100);
+    const location = await allocatePrivateSocketLocation(fittingPath);
+    try {
+      assert.ok(location.directory.startsWith(fittingPath + "/"));
+      assert.ok(Buffer.byteLength(location.socketPath) <= 100);
+      assert.ok(location.socketPath.endsWith(".sock"), "llama-server requires the .sock suffix to select Unix transport");
+      assert.equal((await stat(location.directory)).mode & 0o077, 0);
+    } finally {
+      await rm(location.directory, { recursive: true, force: true });
+    }
+    let longRoot = fittingPath;
+    while (Buffer.byteLength(join(longRoot, "d-XXXXXX", "s.sock")) <= 100) {
+      longRoot = join(longRoot, "abcdefghij");
+      await mkdir(longRoot);
+    }
+    await writeFile(join(longRoot, "keep.txt"), "preserve");
+    await assert.rejects(allocatePrivateSocketLocation(longRoot), /use a shorter TMPDIR/u);
+    assert.deepEqual(await readdir(longRoot), ["keep.txt"]);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
   }
 });

@@ -78,6 +78,12 @@ async function main(argv: string[]): Promise<void> {
     printHelp();
     return;
   }
+  if (command === "--version") {
+    if (rest.length > 0) throw new Error("--version does not accept additional arguments");
+    const packageInfo = JSON.parse(await readFile(join(PROJECT_ROOT, "package.json"), "utf8")) as { version: string };
+    process.stdout.write(`explain-to-me ${packageInfo.version}\n`);
+    return;
+  }
   if (command === "doctor") {
     await doctor(rest);
     return;
@@ -92,6 +98,8 @@ async function doctor(args: string[]): Promise<void> {
   if (args.length > 0) throw new Error("doctor does not accept additional arguments");
   const requiredTools = ["say", "ffmpeg", "ffprobe"];
   const statuses: { name: string; path: string | null; ready: boolean; detail?: string }[] = [];
+  statuses.push({ name: "Node.js >=24", path: process.execPath, ready: Number(process.versions.node.split(".")[0]) >= 24, detail: process.versions.node });
+  statuses.push({ name: "Supported platform (macOS)", path: null, ready: process.platform === "darwin", detail: process.platform });
   for (const name of requiredTools) {
     const path = findExecutable(name);
     statuses.push({ name, path, ready: path !== null });
@@ -154,8 +162,20 @@ async function doctor(args: string[]): Promise<void> {
     detail: chrome ? "installed locally" : browserError || "install the render browser during setup and set CHROME_PATH to its absolute path",
   });
 
-  const checks = statuses.map((item) => `${item.ready ? "OK" : item.name === "Remotion renderer entry" || item.name === "Chrome/Chromium" ? "PENDING" : "MISSING"}  ${item.name}${item.path ? ` — ${item.path}` : ""}${item.detail ? ` (${item.detail})` : ""}`);
+  const checks = statuses.map((item) => `${item.ready ? "OK" : item.name.endsWith("(optional)") ? "OPTIONAL" : "MISSING"}  ${item.name}${item.path ? ` — ${item.path}` : ""}${item.detail ? ` (${item.detail})` : ""}`);
   process.stdout.write(`${checks.join("\n")}\n`);
+  process.stdout.write([
+    "",
+    "Setup guidance (setup may download dependencies; doctor does not install anything):",
+    "  Node.js: use version 24 or newer. Full video builds currently support macOS.",
+    "  ffmpeg/ffprobe: install FFmpeg, e.g. brew install ffmpeg on macOS with Homebrew.",
+    "  Apple speech: check say -v '?' and install the Samantha voice in macOS settings if missing.",
+    "  Browser: follow the README one-time Remotion Headless Shell setup; builds never download it.",
+    "  Kokoro (optional): install uv, then run python3 scripts/setup-kokoro.py.",
+    "  Local director (optional): install llama.cpp / llama-server, then run python3 scripts/setup-director.py.",
+    "  Optional components may be absent; use the prepared-manifest Apple quickstart first.",
+    "",
+  ].join("\n"));
   const coreReady = statuses.filter((item) => !["Kokoro neural narrator (optional)", "Local model director (optional)"].includes(item.name)).every((item) => item.ready);
   if (!coreReady) throw new Error("Required local audio/video tools are unavailable; install them before building.");
 }
@@ -641,6 +661,7 @@ function printHelp(): void {
     "explain-to-me — local document-to-video explainer",
     "",
     "Commands:",
+    "  explain-to-me --version",
     "  explain-to-me doctor",
     "  explain-to-me build <input.md|input.txt> [--director auto|local|template] [--duration 60s] [--audience <text>] [--style <hint>]",
     "  explain-to-me build --manifest <file.json> [--duration 60s]",

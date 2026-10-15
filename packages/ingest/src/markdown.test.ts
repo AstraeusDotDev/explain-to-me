@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { loadDocument, resolveManifestAssets } from "./markdown.js";
 
 test("inline and multiline code image syntax never reads assets", async () => {
+  await mkdir(join(process.cwd(), ".cache"), { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".cache", "inline-code-test-"));
   try {
     await writeFile(join(root, "pixel.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -30,6 +31,7 @@ test("inline and multiline code image syntax never reads assets", async () => {
 });
 
 test("ingests supported blocks and rejects unsafe local image references", async () => {
+  await mkdir(join(process.cwd(), ".cache"), { recursive: true });
   const tempRoot = await mkdtemp(join(process.cwd(), ".cache", "ingest-test-"));
   try {
     const sourcePath = join(tempRoot, "lesson.md");

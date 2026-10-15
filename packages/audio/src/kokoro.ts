@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ContentAddressedCache, type CacheStats } from "../../assets/src/cache.js";
 import type { NarrationChunk } from "../../contracts/src/production-manifest.js";
+import { narrationDurationError } from "./duration-error.js";
 
 const SAMPLE_RATE = 24_000;
 const MIN_SPEED = 0.8;
@@ -135,7 +136,7 @@ export async function synthesizeKokoro(
   }
   if (!last || !attempts.at(-1)?.withinTolerance) {
     const measured = attempts.map((item) => `speed ${item.speed.toFixed(3)} → ${(item.durationMs / 1_000).toFixed(3)}s`).join(", ");
-    throw new Error(`Kokoro narration could not reach ${(targetDurationMs / 1_000).toFixed(3)}s within ±1.000s after ${attempts.length} attempt(s) (speed bounds ${MIN_SPEED}-${MAX_SPEED}). Measured: ${measured}`);
+    throw narrationDurationError(`Kokoro narration could not reach ${(targetDurationMs / 1_000).toFixed(3)}s within ±1.000s after ${attempts.length} attempt(s) (speed bounds ${MIN_SPEED}-${MAX_SPEED}). Measured: ${measured}`);
   }
   return {
     ...last,
