@@ -1,0 +1,193 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.657
+Your document has important things to say.
+
+2
+00:00:02.657 --> 00:00:05.015
+Unfortunately, it is a document.
+
+3
+00:00:05.015 --> 00:00:06.299
+It has no mouth.
+
+4
+00:00:06.299 --> 00:00:12.986
+Meet Explain-to-Me: a local-first toolkit that turns your words into narrated, captioned explainer videos.
+
+5
+00:00:12.986 --> 00:00:14.483
+Tiny movie studio.
+
+6
+00:00:14.483 --> 00:00:16.341
+Extremely sensible shoes.
+
+7
+00:00:16.341 --> 00:00:18.103
+Here is the conveyor belt.
+
+8
+00:00:18.103 --> 00:00:22.240
+Start with Markdown, plain text, or a reviewed production manifest.
+
+9
+00:00:22.240 --> 00:00:27.854
+The toolkit prepares narration, measures the actual speech, then builds the timeline around it.
+
+10
+00:00:27.854 --> 00:00:30.375
+Diagrams, code cards, captions.
+
+11
+00:00:30.375 --> 00:00:32.139
+Everybody arrives together.
+
+12
+00:00:32.139 --> 00:00:34.125
+Nobody gets shoved off the bus.
+
+13
+00:00:34.125 --> 00:00:40.009
+For version zero point two, bring a Mac, Node twenty-four or newer, Git, and F F mpeg.
+
+14
+00:00:40.009 --> 00:00:41.612
+Clone the repository.
+
+15
+00:00:41.612 --> 00:00:43.534
+Install the pinned dependencies.
+
+16
+00:00:43.534 --> 00:00:46.713
+Download the rendering browser once, then run doctor.
+
+17
+00:00:46.713 --> 00:00:48.944
+The README has the exact commands.
+
+18
+00:00:48.944 --> 00:00:50.513
+Doctor checks the tools.
+
+19
+00:00:50.513 --> 00:00:52.425
+It does not check your dance moves.
+
+20
+00:00:52.425 --> 00:00:56.328
+Make your first video with the bundled manifest and Apple speech.
+
+21
+00:00:56.328 --> 00:00:58.656
+No extra language model required.
+
+22
+00:00:58.656 --> 00:01:03.594
+Choose a fresh output folder, run the build, and open video dot M P four.
+
+23
+00:01:03.594 --> 00:01:04.996
+Congratulations!
+
+24
+00:01:04.996 --> 00:01:07.899
+Your terminal has entered its film director era.
+
+25
+00:01:07.899 --> 00:01:10.663
+Next, hand it your own Markdown or text file.
+
+26
+00:01:10.663 --> 00:01:13.609
+Template mode selects source material directly.
+
+27
+00:01:13.609 --> 00:01:16.498
+Want local model direction and a smoother voice?
+
+28
+00:01:16.498 --> 00:01:21.212
+Install the optional director and Kokoro models, then choose those backends.
+
+29
+00:01:21.212 --> 00:01:24.520
+Setup downloads the tools; inference runs locally.
+
+30
+00:01:24.520 --> 00:01:26.749
+Always review what the model writes.
+
+31
+00:01:26.749 --> 00:01:32.662
+Your output folder includes the movie, narration audio, captions, manifest, and a report.
+
+32
+00:01:32.662 --> 00:01:34.884
+Keep the manifest to revise the script.
+
+33
+00:01:34.884 --> 00:01:36.149
+Check the report.
+
+34
+00:01:36.149 --> 00:01:38.062
+Watch and listen before sharing.
+
+35
+00:01:38.062 --> 00:01:45.133
+Automated checks can catch broken timing; they cannot tell whether your explanation is secretly about a potato.
+
+36
+00:01:45.133 --> 00:01:46.992
+Prefer a robot assistant?
+
+37
+00:01:46.992 --> 00:01:50.961
+Copy the quick installer prompt from the README into your coding agent.
+
+38
+00:01:50.961 --> 00:01:57.212
+It sets up the pinned release, checks prerequisites, and keeps your private stories outside the software checkout.
+
+39
+00:01:57.212 --> 00:01:58.870
+You review the finished movie.
+
+40
+00:01:58.870 --> 00:02:02.197
+The robot gets a tiny imaginary director chair.
+
+41
+00:02:02.197 --> 00:02:06.025
+Version zero point two ships the technical whiteboard style.
+
+42
+00:02:06.025 --> 00:02:09.556
+These cartoons and this music are a custom release showcase.
+
+43
+00:02:09.556 --> 00:02:10.704
+Grab the code.
+
+44
+00:02:10.704 --> 00:02:12.360
+Explain something useful.
+
+45
+00:02:12.360 --> 00:02:14.697
+Make somebody go, oh, now I get it!
+
+46
+00:02:14.697 --> 00:02:15.868
+Explain-to-Me.
+
+47
+00:02:15.868 --> 00:02:17.269
+Less wall of text.
+
+48
+00:02:17.269 --> 00:02:18.272
+More aha.

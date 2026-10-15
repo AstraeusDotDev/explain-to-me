@@ -137,7 +137,7 @@ def main(argv=None):
     sources.add_argument('--manifest', type=Path)
     parser.add_argument('--pronunciations', type=Path)
     parser.add_argument('--label', default='explainer')
-    parser.add_argument('--director', choices=['auto', 'local', 'template'], default='auto')
+    parser.add_argument('--director', choices=['auto', 'local', 'template'])
     parser.add_argument('--tts', choices=['auto', 'apple', 'kokoro'], default='auto')
     parser.add_argument('--voice')
     parser.add_argument('--duration', default='60s')
@@ -149,6 +149,8 @@ def main(argv=None):
         parser.error('--timeout must be between 1 and 3600 seconds')
     if args.command == 'build' and not (args.input or args.manifest):
         parser.error('build requires --input or --manifest')
+    if args.command == 'build' and args.manifest and any(value is not None for value in (args.director, args.audience, args.style)):
+        parser.error('Director/audience/style options apply to document inputs, not prepared manifests')
     os.umask(0o077)
     record = {'state': 'failed'}
     record_path = None
@@ -177,7 +179,9 @@ def main(argv=None):
             command = cli + ['doctor']
         else:
             command = cli + ['build'] + (['--manifest', str(source)] if args.manifest else [str(source)])
-            command += ['--director', args.director, '--tts', args.tts, '--duration', args.duration, '--output', str(paths['output']), '--cache-dir', str(paths['cache'])]
+            command += ['--tts', args.tts, '--duration', args.duration, '--output', str(paths['output']), '--cache-dir', str(paths['cache'])]
+            if not args.manifest:
+                command += ['--director', args.director or 'auto']
             for flag, value in [('--voice', args.voice), ('--audience', args.audience), ('--style', args.style), ('--pronunciations', str(pronunciation) if pronunciation else None)]:
                 if value:
                     command += [flag, value]

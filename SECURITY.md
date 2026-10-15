@@ -6,7 +6,7 @@ This is early-stage local software, not a security-audited execution sandbox. Ke
 
 Do not post credentials, private documents, exploitable details or sensitive build logs in a public issue.
 
-If GitHub private vulnerability reporting is available for this repository, use **Security → Report a vulnerability**. Otherwise open a minimal issue asking the maintainer for a private reporting channel, without including the vulnerability or sensitive data. Private reporting availability is not guaranteed while the repository is being prepared for publication.
+If GitHub private vulnerability reporting is available for this repository, use **Security → Report a vulnerability**. Otherwise open a minimal issue asking the maintainer for a private reporting channel, without including the vulnerability or sensitive data. Repository publication alone does not guarantee private reporting is enabled.
 
 This is a personal project; no response-time or long-term-support SLA is promised. Reports should identify the affected version, impact and a minimal synthetic reproduction. Fixes target the current development line; there is no supported older-version matrix yet.
 

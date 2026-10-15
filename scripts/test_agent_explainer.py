@@ -1,4 +1,6 @@
 import importlib.util
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -6,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location('agent_explainer', Path(__file__).with_name('agent-explainer.py'))
 assert SPEC is not None and SPEC.loader is not None
@@ -89,6 +92,50 @@ class AgentLauncherTests(unittest.TestCase):
         self.assertTrue(after['dirty'])
         self.assertNotEqual(before['sourceFingerprint'], after['sourceFingerprint'])
         self.assertEqual(after['version'], '0.2.0')
+
+    def test_prepared_manifest_build_does_not_pass_document_direction_options(self):
+        source = self.workspace / 'story.json'
+        source.write_text('{}')
+        identity = {'version': '0.2.0', 'sourceFingerprint': 'unit-fixture'}
+        with mock.patch.object(agent, 'software_identity', return_value=identity), \
+                mock.patch.object(agent.shutil, 'which', return_value='/fixture/node'), \
+                mock.patch.object(agent.subprocess, 'check_output', return_value='explain-to-me 0.2.0\n'), \
+                mock.patch.object(agent, 'run_owned') as run, \
+                mock.patch.object(agent, 'validate_output', return_value={}), \
+                redirect_stdout(io.StringIO()):
+            result = agent.main(['build', '--workspace', str(self.workspace), '--manifest', str(source), '--tts', 'apple'])
+        self.assertEqual(result, 0)
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index('--manifest') + 1], str(source.resolve()))
+        for option in ['--director', '--audience', '--style']:
+            self.assertNotIn(option, command)
+
+    def test_prepared_manifest_refuses_explicit_document_direction_before_job_creation(self):
+        source = self.workspace / 'story.json'
+        source.write_text('{}')
+        for option, value in [('--director', 'auto'), ('--audience', 'new teammates'), ('--style', 'friendly')]:
+            with self.subTest(option=option):
+                with redirect_stderr(io.StringIO()) as errors, redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as failure:
+                    agent.main(['build', '--workspace', str(self.workspace), '--manifest', str(source), option, value])
+                self.assertEqual(failure.exception.code, 2)
+                self.assertIn('apply to document inputs', errors.getvalue())
+                self.assertFalse((self.workspace / '.explain-to-me').exists())
+
+    def test_document_build_preserves_requested_direction_options(self):
+        source = self.workspace / 'story.md'
+        source.write_text('A neutral explanation.')
+        identity = {'version': '0.2.0', 'sourceFingerprint': 'unit-fixture'}
+        with mock.patch.object(agent, 'software_identity', return_value=identity), \
+                mock.patch.object(agent.shutil, 'which', return_value='/fixture/node'), \
+                mock.patch.object(agent.subprocess, 'check_output', return_value='explain-to-me 0.2.0\n'), \
+                mock.patch.object(agent, 'run_owned') as run, \
+                mock.patch.object(agent, 'validate_output', return_value={}), \
+                redirect_stdout(io.StringIO()):
+            result = agent.main(['build', '--workspace', str(self.workspace), '--input', str(source), '--director', 'template', '--audience', 'new teammates', '--style', 'friendly'])
+        self.assertEqual(result, 0)
+        command = run.call_args.args[0]
+        for option, value in [('--director', 'template'), ('--audience', 'new teammates'), ('--style', 'friendly')]:
+            self.assertEqual(command[command.index(option) + 1], value)
 
 
 if __name__ == '__main__':

@@ -9,10 +9,10 @@ Main output: `out/phase-3-reviewed-cold/video.mp4`. Supporting intent, captions,
 ## Real commands
 
 ```bash
-TMPDIR=/Users/tommy.allsup/.hermes/cache/scratch ./node_modules/.bin/tsx apps/cli/src/index.ts build fixtures/inputs/cached-builds/document.md --director local --duration 60s --audience 'software engineers' --tts kokoro --voice af_heart --pronunciations fixtures/inputs/cached-builds/pronunciations.json --cache-dir .explain-to-me/cache-phase3-reviewed --output out/phase-3-reviewed-cold
+TMPDIR="<user-owned-temporary-root>" ./node_modules/.bin/tsx apps/cli/src/index.ts build fixtures/inputs/cached-builds/document.md --director local --duration 60s --audience 'software engineers' --tts kokoro --voice af_heart --pronunciations fixtures/inputs/cached-builds/pronunciations.json --cache-dir .explain-to-me/cache-phase3-reviewed --output out/phase-3-reviewed-cold
 ```
 
-The warm run used the same arguments/cache with `--output out/phase-3-reviewed-warm`. The reviewed-cache directory did not exist before the cold run. Setup downloads and installed weights/browser are excluded from build wall time. These runs exercise the hardened private-socket director transport.
+The temporary-root path is redacted above; replace the placeholder with an existing short, user-owned directory to run the command. The warm run used the same arguments/cache with `--output out/phase-3-reviewed-warm`. The reviewed-cache directory did not exist before the cold run. Setup downloads and installed weights/browser are excluded from build wall time. These runs exercise the hardened private-socket director transport.
 
 ## Measured results
 

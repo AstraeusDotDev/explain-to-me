@@ -1,6 +1,6 @@
 # Explain-to-Me: Roadmap to 1.0
 
-**Status:** 0.2 implemented locally for owner review; later milestones remain proposed, not blanket implementation authorization.
+**Status:** Owner authorized 0.2 as the first public open-source release; later milestones remain proposed, not blanket implementation authorization.
 **Baseline:** v0.1.0, tagged at `1d62754`.
 **Goal:** Turn local source material into an accurate, engaging, human-reviewable explainer without custom production scripts.
 **Architecture:** Keep the validated, renderer-neutral production manifest, local adapters, measured narration timeline, deterministic information layer and content-addressed caches. Productize the successful production workflows around those boundaries rather than build a general video editor.
@@ -30,7 +30,7 @@ Custom cartoons, imported music, human-selected sentence pacing and listening ev
 
 ### 0.2 — A repeatable first-run experience
 
-**State:** Prepared locally; publication and visibility changes await owner approval. See [release preview](docs/releases/0.2.0.md).
+**State:** Implemented and owner-reviewed; authorized for the first public release. See [release notes](docs/releases/0.2.0.md) for publication details.
 
 **Outcome:** Install, diagnose prerequisites and build a first video without environment troubleshooting.
 
@@ -174,9 +174,9 @@ Tag 1.0 when these outcomes are demonstrated, not merely when the version sequen
 - Documentation/metadata-only changes do not justify new full-video builds.
 - Broad fault/egress/acceptance runs belong at the relevant milestone gates, not every commit.
 - Use existing review evidence when code is unchanged. Independent reviews are for substantive safety/architecture changes, not repeated ceremonial passes.
-- Keep private production material, generated media, model weights and credentials out of source releases.
-- Keep the repository private until Tommy explicitly changes that decision.
+- Keep private production material, model weights and credentials out of source releases. Include only deliberately selected, documented demonstration media.
+- Publish 0.2 under Tommy's explicit authorization; later release scope still requires an owner decision.
 
 ## Next recommended slice
 
-Review and approve publication of the prepared 0.2 changes, then prioritize 0.3: supported narration pacing and imported music. That converts the strongest demonstrated production improvements into ordinary product behavior before expanding formats or building a UI.
+After the public 0.2 launch, prioritize 0.3: supported narration pacing and imported music. That converts the strongest demonstrated production improvements into ordinary product behavior before expanding formats or building a UI.

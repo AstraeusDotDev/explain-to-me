@@ -1,0 +1,23 @@
+import { execFileSync } from 'node:child_process';
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+
+const music=process.argv[2];
+if(!music) throw new Error('Pass a local music file: tsx scripts/release-video/finish.ts /path/to/music.mp3');
+const output=resolve('out/release-showcase');
+const destination=resolve('docs/site/assets');
+const audio=JSON.parse(await readFile(`${output}/audio-record.json`,'utf8'));
+const props=JSON.parse(await readFile(`${output}/props.json`,'utf8'));
+const seconds=props.timeline.durationInFrames/24;
+await mkdir(destination,{recursive:true});
+const final=`${destination}/explain-to-me-v0.2.mp4`;
+const filters=`[1:a]loudnorm=I=-16:TP=-2:LRA=9,aformat=channel_layouts=stereo,apad,asplit=2[voice][key];[2:a]loudnorm=I=-27:TP=-4:LRA=9,afade=t=in:st=0:d=1.2,afade=t=out:st=${seconds-3}:d=3[music];[music][key]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=450[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95:level=false[mix]`;
+execFileSync('ffmpeg',['-hide_banner','-loglevel','warning','-y','-i',`${output}/silent.mp4`,'-f','s16le','-ar','24000','-ac','1','-i',audio.pcmPath,'-i',resolve(music),'-filter_complex',filters,'-map','0:v','-map','[mix]','-c:v','copy','-c:a','aac','-ar','48000','-b:a','192k','-t',String(seconds),'-movflags','+faststart','-metadata','title=Explain-to-Me: docs with a pulse','-metadata','artist=Tommy Allsup',final],{stdio:'inherit'});
+await copyFile(`${output}/captions.vtt`,`${destination}/captions.vtt`);
+execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss','5','-i',final,'-frames:v','1','-q:v','2',`${destination}/how-it-works.jpg`]);
+await mkdir('docs/images',{recursive:true});
+await copyFile(`${destination}/how-it-works.jpg`,'docs/images/how-it-works.jpg');
+const sha256=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
+await writeFile(`${destination}/production.json`,JSON.stringify({title:props.manifest.title,release:'v0.2.0',durationSeconds:seconds,resolution:[1280,720],fps:24,narration:{backend:audio.backend,voice:audio.voice,durationMs:audio.durationMs},music:{title:'Business As Usual',artist:'tommyallsup',sha256:sha256(await readFile(resolve(music))),source:'Provided by the project owner; original recording is not bundled.'},videoSha256:sha256(await readFile(final)),source:'scripts/release-video',production:'Custom Remotion cartoons using Explain-to-Me narration preparation, synthesis, measured timeline, and caption modules; FFmpeg soundtrack mix.'},null,2)+'\n');
+console.log(final);

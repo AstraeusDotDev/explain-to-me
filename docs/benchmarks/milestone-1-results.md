@@ -23,7 +23,7 @@ Command: `npm exec --cache .cache/npm --offline --yes pnpm@10.18.3 -- explain-to
 - Scene-boundary images: 12
 - Renderer-observed external requests: 0; whole-process egress remains unverified
 - CPU: Apple M4 Pro; logical CPUs: 14
-- Actual render browser: `/Users/tommy.allsup/Development/sandbox/explain-to-me/node_modules/.remotion/chrome-headless-shell/mac-arm64/chrome-headless-shell-mac-arm64/chrome-headless-shell`
+- Actual render browser: `<checkout>/node_modules/.remotion/chrome-headless-shell/mac-arm64/chrome-headless-shell-mac-arm64/chrome-headless-shell` (checkout prefix redacted).
 
 Typechecking passed. Four focused contract/timeline/audio-QC tests passed. Tests remain intentionally lean; actual render/probe/decode and sampled visual inspection are the main implementation evidence. The sampled frames show readable layouts with no observed clipping/overlap. This does not replace the required full human watch/listen.
 

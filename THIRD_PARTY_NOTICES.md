@@ -30,4 +30,8 @@ FFmpeg/ffprobe, Apple speech, the installed rendering browser, Python packages a
 
 Supply only materials you have permission to process. Redistribution of images, fonts, music or generated output may require separate rights. User-provided declarations are provenance, not automatic rights clearance. Imported background music is not a built-in 0.2 feature.
 
+## Release movie soundtrack
+
+The v0.2.0 getting-started movie uses **“Business As Usual” by tommyallsup**, supplied by the project owner for this release. The original audio file is not bundled with the source. The project code's MIT license does not relicense this soundtrack or grant separate rights to reuse the music.
+
 This file is a component/terms guide, not a complete legal assessment or third-party source distribution.

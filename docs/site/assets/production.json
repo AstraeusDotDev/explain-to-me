@@ -1,0 +1,24 @@
+{
+  "title": "Explain-to-Me: docs with a pulse",
+  "release": "v0.2.0",
+  "durationSeconds": 138.29166666666666,
+  "resolution": [
+    1280,
+    720
+  ],
+  "fps": 24,
+  "narration": {
+    "backend": "kokoro",
+    "voice": "af_heart",
+    "durationMs": 138271.625
+  },
+  "music": {
+    "title": "Business As Usual",
+    "artist": "tommyallsup",
+    "sha256": "81a76e6528c097e6a68726677177bf045c3c371638392cdb3a1933792dec4c10",
+    "source": "Provided by the project owner; original recording is not bundled."
+  },
+  "videoSha256": "2fe123d8c3bbd83c96d1a098850ef3470ae981dd40dd4b25a5e1369c28d7e877",
+  "source": "scripts/release-video",
+  "production": "Custom Remotion cartoons using Explain-to-Me narration preparation, synthesis, measured timeline, and caption modules; FFmpeg soundtrack mix."
+}

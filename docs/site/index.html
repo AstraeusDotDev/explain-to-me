@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f3e8">
+    <meta name="description" content="Turn local documents into narrated, captioned explainer videos. Meet Explain-to-Me: local-first, inspectable, and ready for a little aha.">
+    <meta property="og:title" content="Explain-to-Me — Give your docs a speaking part">
+    <meta property="og:description" content="Local documents → a reviewed plan → narration → a captioned video. A little less huh. A lot more aha.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://tommyallsup.github.io/explain-to-me/">
+    <meta property="og:image" content="https://tommyallsup.github.io/explain-to-me/assets/how-it-works.jpg">
+    <title>Explain-to-Me — Give your docs a speaking part</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to the good stuff</a>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="Explain-to-Me home">
+          <svg class="brand-icon" viewBox="0 0 52 56" aria-hidden="true"><path d="M10 4h25l10 11v33a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4Z" fill="#8ed8c8" stroke="currentColor" stroke-width="3"/><path d="M34 5v12h11M16 27v3m16-3v3m-16 9q8 8 16 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          <span>explain<span class="brand-dot">·</span>to<span class="brand-dot">·</span>me</span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a href="https://github.com/TommyAllsup/explain-to-me#readme">README</a>
+          <a href="#quickstart">Get started</a>
+          <a class="github-link" href="https://github.com/TommyAllsup/explain-to-me">GitHub <span aria-hidden="true">↗</span></a>
+        </nav>
+      </header>
+
+      <main id="main">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="release-dot" aria-hidden="true"></span> V0.2 · HELLO, OPEN SOURCE</p>
+            <h1 id="hero-title">Give your docs<br> a <span class="speaking">speaking</span><br> part<span class="orange">.</span></h1>
+            <p class="hero-description">Turn local documents into narrated, captioned explainer videos. For the big ideas that deserve more than another wall of text.</p>
+            <div class="hero-actions">
+              <a class="button button-dark" href="#watch"><span aria-hidden="true">▶</span> Meet the little movie machine</a>
+              <a class="text-link" href="#quickstart">Let's make one <span aria-hidden="true">↗</span></a>
+            </div>
+            <p class="hero-meta">macOS-first <span aria-hidden="true">✳</span> Local-first <span aria-hidden="true">✳</span> MIT project code</p>
+          </div>
+
+          <div class="hero-stage" id="watch">
+            <div class="stage-doodle doodle-star" aria-hidden="true">✳</div>
+            <span class="sticker">less “huh?”<br> more “aha!”</span>
+            <figure class="video-frame">
+              <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>the extremely helpful picture show</span><span aria-hidden="true">✦</span></div>
+              <video id="explainer-video" controls playsinline preload="metadata" poster="assets/how-it-works.jpg" aria-label="Watch the Explain-to-Me introduction">
+                <source src="assets/explain-to-me-v0.2.mp4" type="video/mp4">
+                <track kind="captions" src="assets/captions.vtt" srclang="en" label="English">
+                Your browser cannot play this video. <a href="https://github.com/TommyAllsup/explain-to-me/releases/download/v0.2.0/explain-to-me-v0.2.mp4">Download the introduction.</a>
+              </video>
+              <figcaption><span><span class="tiny-star" aria-hidden="true">✷</span> A goofy tour of a useful tool.</span><a href="https://github.com/TommyAllsup/explain-to-me/releases/download/v0.2.0/explain-to-me-v0.2.mp4">Download video <span aria-hidden="true">↓</span></a></figcaption>
+            </figure>
+            <div class="stage-caption"><svg viewBox="0 0 74 45" fill="none" aria-hidden="true"><path d="M69 4C55 36 29 37 8 27m0 0 8-4m-8 4 5 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>press play. bring your brain.</div>
+          </div>
+        </section>
+
+        <div class="ticker" aria-label="Documents become a plan, a voice, and a video">
+          <span>YOUR DOCS</span><span aria-hidden="true">↝</span><span>A PLAN</span><span aria-hidden="true">↝</span><span>A VOICE</span><span aria-hidden="true">↝</span><span>A VIDEO</span><span class="ticker-flower" aria-hidden="true">✳</span><span>OH, NOW I GET IT.</span>
+        </div>
+
+        <section class="how-section section-space" id="how-it-works" aria-labelledby="how-title">
+          <div class="section-heading"><div><p class="eyebrow">A SMALL PRODUCTION LINE FOR BIG IDEAS</p><h2 id="how-title">From brain dump<br> to brain <span class="serif-word">click.</span></h2></div><p>You bring the idea. Explain-to-Me gives it a script, a voice, and a timeline you can actually inspect.</p></div>
+          <ol class="pipeline">
+            <li><span class="step-number">01</span><div class="step-illustration document-art" aria-hidden="true"><div class="mini-doc"><b></b><i></i><i></i><i></i><span>hello, idea!</span></div><span class="art-spark">✧</span></div><h3>Feed it a document</h3><p>Start with Markdown, plain text, or a prepared production manifest. Your source stays on your machine during local processing.</p><span class="step-tag">.md · .txt · manifest.json</span></li>
+            <li><span class="step-number">02</span><div class="step-illustration plan-art" aria-hidden="true"><div class="plan-row"><b>01</b><span></span><i>✓</i></div><div class="plan-row"><b>02</b><span></span><i>✓</i></div><div class="plan-row"><b>03</b><span></span><i>✓</i></div></div><h3>Give the idea a plan</h3><p>A local director can draft a constrained manifest. Review the script and scenes, or start with a plan you've already approved.</p><span class="step-tag">A script you can read & revise</span></li>
+            <li><span class="step-number">03</span><div class="step-illustration voice-art" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><i>♪</i></div><h3>Let the words drive</h3><p>Apple speech or optional local Kokoro voices narrate the story. Measured audio sets the scene timing and captions.</p><span class="step-tag">Real narration. Measured timing.</span></li>
+            <li><span class="step-number">04</span><div class="step-illustration movie-art" aria-hidden="true"><div class="mini-movie"><span>▶</span><i></i></div><b>ta-da!</b></div><h3>Hit play. Have an aha.</h3><p>Get a captioned MP4, narration audio, the manifest, and a validation report. Watch it, listen, and make the final human call.</p><span class="step-tag">video.mp4 + all the receipts</span></li>
+          </ol>
+          <p class="production-note"><span aria-hidden="true">✳</span> The release film gets a custom cartoon-and-music treatment. The 0.2 CLI renders technical-whiteboard scenes at 720p / 24 fps; custom cartoons and music are separate production work.</p>
+        </section>
+
+        <section class="quickstart-section section-space" id="quickstart" aria-labelledby="quickstart-title">
+          <div class="quickstart-intro"><p class="eyebrow">LESS SETUP SCROLLING. MORE MAKING.</p><h2 id="quickstart-title">Your first<br> <span class="serif-word">“I made this.”</span></h2><p>Use the bundled example and your Mac's Samantha voice. No separate language model or Kokoro setup needed.</p><div class="requirements"><h3>Bring these along</h3><ul><li>macOS with the Samantha speech voice</li><li>Node.js 24+, npm, and Git</li><li>FFmpeg / ffprobe <code>brew install ffmpeg</code></li></ul></div><p class="small-copy">Run these commands from your terminal. Setup downloads dependencies and a rendering browser; builds use the installed tools.</p><a class="text-link" href="https://github.com/TommyAllsup/explain-to-me#quickstart-roll-your-first-tiny-movie">Full setup & troubleshooting <span aria-hidden="true">↗</span></a></div>
+          <div class="terminal"><div class="terminal-header"><span><span class="terminal-light" aria-hidden="true"></span> a small adventure in your terminal</span><button class="copy-button" data-copy="quickstart-code" type="button" aria-label="Copy quickstart commands">Copy <span aria-hidden="true">⧉</span></button></div><pre><code id="quickstart-code"><span class="code-comment"># 1. Invite the little movie machine over</span>
+git clone --branch v0.2.0 https://github.com/TommyAllsup/explain-to-me.git
+cd explain-to-me
+npm exec --cache .cache/npm --yes --package=pnpm@10.18.3 -- pnpm install --frozen-lockfile
+
+<span class="code-comment"># 2. Download the rendering browser (one time)</span>
+node --input-type=module -e 'import {ensureBrowser} from "@remotion/renderer"; await ensureBrowser({chromeMode:"headless-shell"});'
+
+<span class="code-comment"># 3. Check the tools, then make a movie</span>
+npm exec --cache .cache/npm --offline --yes --package=pnpm@10.18.3 -- pnpm explain-to-me doctor
+npm exec --cache .cache/npm --offline --yes --package=pnpm@10.18.3 -- pnpm explain-to-me build \
+  --manifest fixtures/golden-manifests/whisper-vs-tts.json \
+  --tts apple --voice Samantha --duration 60s \
+  --output out/my-first-explainer
+
+open out/my-first-explainer/video.mp4</code></pre><div class="terminal-footer"><span aria-hidden="true">↳</span> Pick a fresh output directory for every build.</div></div>
+        </section>
+
+        <section class="agent-section section-space" id="agent-installer" aria-labelledby="agent-title">
+          <div class="agent-intro"><span class="bubble" aria-hidden="true">psst,<br> robot friend.</span><p class="eyebrow">GOT AN AGENT? GIVE IT A MISSION.</p><h2 id="agent-title">Copy. Paste.<br> <span class="serif-word">Cue the montage.</span></h2><p>Hand this prompt to your coding agent. It can set up the checkout, diagnose the tools, and help you make your first explainer.</p><p class="small-copy">The prompt asks your agent to report missing prerequisites and keep your private source material outside the software checkout.</p><a class="text-link" href="https://github.com/TommyAllsup/explain-to-me/blob/v0.2.0/docs/quick-install.md">Full agent setup guide <span aria-hidden="true">↗</span></a></div>
+          <div class="prompt-card"><div class="prompt-header"><span>ONE PROMPT, COMING RIGHT UP</span><button class="copy-button copy-button-light" data-copy="agent-prompt" type="button" aria-label="Copy agent installer prompt">Copy prompt <span aria-hidden="true">⧉</span></button></div><pre id="agent-prompt">Install Explain-to-Me v0.2.0 from https://github.com/TommyAllsup/explain-to-me
+for this Mac. Read README.md and docs/quick-install.md at that tag first and
+follow their pinned setup commands. Use a new checkout, leave existing projects
+alone, and check Node.js 24+, Git, FFmpeg/ffprobe, and the Samantha voice.
+Install project dependencies and the Remotion Headless Shell browser, then run
+doctor. Start with Apple speech and the bundled whisper-vs-tts manifest;
+do not download optional LLM/Kokoro models for this first run.
+Keep my private inputs and generated jobs in a separate workspace outside the
+software checkout. Use scripts/agent-explainer.py for the smoke build, following
+docs/agent-integration.md. Report the exact checkout/tag, doctor result, job JSON,
+video and caption paths, and any remaining prerequisites. Open the video if
+possible. Automated QC is not my approval of the script or finished movie.</pre></div>
+        </section>
+
+        <section class="possibilities-section section-space" aria-labelledby="possibilities-title">
+          <div class="section-heading"><div><p class="eyebrow">A FEW GOOD REASONS TO PRESS RECORD</p><h2 id="possibilities-title">Big “wait, explain that”<br> <span class="serif-word">energy.</span></h2></div><p>Technical notes, onboarding ideas, a diagram that needs a voice. Start small, inspect the script, then share the aha.</p></div>
+          <div class="example-list">
+            <article><span class="example-symbol mint" aria-hidden="true">↗</span><div><p class="example-label">THE TEAMMATE FRIENDLY TOUR</p><h3>Why are cached builds so fast?</h3><p>Turn the bundled Markdown example into a narrated walkthrough, with a local image and pronunciation map.</p></div><a href="https://github.com/TommyAllsup/explain-to-me/tree/main/fixtures/inputs/cached-builds">Meet the example <span aria-hidden="true">↗</span></a></article>
+            <article><span class="example-symbol peach" aria-hidden="true">{ }</span><div><p class="example-label">THE “LET ME SHOW YOU” MOMENT</p><h3>Give technical ideas a voice.</h3><p>Use diagrams, comparisons, bullet scenes, code cards, and approved local images in a constrained production plan.</p></div><a href="https://github.com/TommyAllsup/explain-to-me/blob/main/fixtures/golden-manifests/whisper-vs-tts.json">Peek at a manifest <span aria-hidden="true">↗</span></a></article>
+            <article><span class="example-symbol lilac" aria-hidden="true">↻</span><div><p class="example-label">THE “ONE MORE TAKE” BUTTON</p><h3>Revise the story. Keep the receipts.</h3><p>Save the manifest, review the narration, and rebuild. Persistent caches reuse unchanged direction, speech, and frames.</p></div><a href="https://github.com/TommyAllsup/explain-to-me#whats-in-the-goodie-bag">Explore the outputs <span aria-hidden="true">↗</span></a></article>
+          </div>
+        </section>
+
+        <aside class="honest-note" aria-labelledby="honest-title"><div class="note-face" aria-hidden="true">☺</div><div><h2 id="honest-title">A friendly tool. An actual early release.</h2><p>0.2 is macOS-first source software. Local setup downloads tools and optional models. Whole-process no-egress verification is still open. Captions use sentence/phrase timing, and a human should review the script and final movie.</p><p>Project code is MIT-licensed; dependencies, model weights, voices, and assets have their own terms. <a href="https://github.com/TommyAllsup/explain-to-me/blob/main/THIRD_PARTY_NOTICES.md">Read the third-party notices <span aria-hidden="true">↗</span></a></p></div></aside>
+
+        <section class="closing" aria-labelledby="closing-title"><span class="closing-star" aria-hidden="true">✳</span><p class="eyebrow">ALL RIGHT. YOUR IDEA HAS THE FLOOR.</p><h2 id="closing-title">Go make something<br> make <span class="serif-word">sense.</span></h2><a class="button button-dark" href="https://github.com/TommyAllsup/explain-to-me">Get Explain-to-Me on GitHub <span aria-hidden="true">↗</span></a><p>Made by <a href="https://github.com/TommyAllsup">Tommy Allsup</a>, for the joy of a good explanation.</p></section>
+      </main>
+      <footer class="site-footer"><a class="footer-brand" href="./">explain·to·me <span>v0.2.0</span></a><p>A little less huh. A lot more aha.</p><nav aria-label="Footer navigation"><a href="https://github.com/TommyAllsup/explain-to-me/blob/main/LICENSE">License</a><a href="https://github.com/TommyAllsup/explain-to-me/blob/main/SECURITY.md">Security</a><a href="https://github.com/TommyAllsup/explain-to-me/blob/main/CONTRIBUTING.md">Contribute</a></nav></footer>
+    </div>
+    <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+  </body>
+</html>

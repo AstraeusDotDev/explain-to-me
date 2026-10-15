@@ -1,60 +1,56 @@
-# Explain-to-Me
+# Explain-to-Me 🎬
 
-**Turn local documents into narrated, captioned explainer videos.**
+**Your document has a point. Give it a voice, a whiteboard, and a tiny movie premiere.**
 
-Explain-to-Me combines local narration with deterministic diagrams, code cards and other explanatory scenes. Start from a reviewed manifest, or let a local model turn Markdown/plain text into a constrained production plan. The narration sets the timeline—not the other way around.
+Explain-to-Me turns local Markdown, plain text, or a reviewed script into narrated, captioned explainer videos. A local model can plan the story; deterministic scenes do the drawing; measured speech keeps the whole crew on time.
 
-**macOS-first · TypeScript CLI · Local model adapters · MIT project code**
+**v0.2.0 · First open source release · macOS-first · TypeScript CLI · MIT project code**
 
-> Early preview software. Version 0.2 is prepared for review, not yet released. Only the 720p/24 fps preview profile and technical-whiteboard theme are implemented. See the [roadmap to 1.0](ROADMAP.md).
+[![Watch the goofy Explain-to-Me getting-started video](docs/images/how-it-works.jpg)](https://tommyallsup.github.io/explain-to-me/)
 
-![A real technical-whiteboard title scene explaining why cached builds are fast](docs/images/preview.png)
+**[▶ Watch the getting-started movie](https://tommyallsup.github.io/explain-to-me/)** · [Download the MP4](https://github.com/TommyAllsup/explain-to-me/releases/download/v0.2.0/explain-to-me-v0.2.mp4) · [Give your agent the installer prompt](#let-your-agent-handle-setup)
 
-*Actual output from the bundled neutral caching example—not a mockup. Video/model artifacts are not bundled with the source.*
+*The release movie gets a bespoke cartoon-and-music treatment; [its production source is here](scripts/release-video/README.md). The 0.2 CLI produces the technical-whiteboard style shown below; custom cartoons and soundtrack mixing are separate production work.*
 
-## What you can do today
+*Movie music: “Business As Usual” by tommyallsup.*
 
-- Build from Markdown, plain text or a prepared manifest.
-- Choose local model direction or an explicitly extractive template fallback.
-- Narrate with Apple speech or optional local Kokoro voices.
-- Override pronunciations without changing visible captions or code.
-- Render diagrams, comparisons, bullets, code, approved local images and title/outro scenes.
-- Export captions timed from measured sentence/phrase audio chunks.
-- Reuse direction, speech and rendered frames through persistent caches.
-- Inspect media validation, timings, source references and provenance.
+## Meet your extremely small film crew
 
 ```text
-Local source → constrained manifest → narration → measured timeline → video + captions
+Your document → story manifest → local narration → measured timeline → video + captions
+                  director           narrator          timekeeper        ta-da!
 ```
 
-## Quickstart: your first video
+- **Explain a thing:** architecture, a proposal, a tricky concept, or why the cache gremlins are innocent.
+- **Pick your script:** direct a document with a local model, select text with the template mode, or write a manifest yourself.
+- **Show the idea:** diagrams, comparisons, bullets, code cards, local images, titles, and outros.
+- **Keep the receipts:** editable manifests, caption files, source references, timings, validation reports, and cache provenance.
+- **Reuse the expensive work:** unchanged narration and rendered frames can come from persistent caches.
 
-The first example uses a prepared manifest and the installed Apple voice: **no separate LLM or Kokoro model setup is required.** Commands run from the repository root.
+![Actual technical-whiteboard output from the bundled caching example](docs/images/preview.png)
 
-### 1. Install prerequisites
+*Real output, not a mockup. Version 0.2 renders 1280 × 720 at 24 fps with the technical-whiteboard theme.*
 
-- macOS, Node.js 24+ with npm, Git, and FFmpeg/ffprobe.
-- The macOS Samantha voice, available through Apple speech. Run `say -v '?'` to check installed voices.
-- A rendering browser, downloaded explicitly in step 2.
+## Quickstart: roll your first tiny movie
 
-If you use Homebrew, FFmpeg is available with `brew install ffmpeg`. Optional model requirements are separate below.
+The first build uses a prepared manifest and Apple's installed voice. **No LLM or Kokoro download required.** You'll need macOS, Node.js 24+ with npm, Git, FFmpeg/ffprobe, and the Samantha voice (`say -v '?'` lists installed voices). With Homebrew, install FFmpeg using `brew install ffmpeg`.
 
-### 2. Set up the checkout
+### 1. Bring in the crew
 
 ```bash
-git clone https://github.com/TommyAllsup/explain-to-me.git
+git clone --branch v0.2.0 https://github.com/TommyAllsup/explain-to-me.git
 cd explain-to-me
 
-# Setup may download the pinned pnpm launcher and dependencies.
+# Install the pinned package manager and project dependencies.
 npm exec --cache .cache/npm --yes --package=pnpm@10.18.3 -- pnpm install --frozen-lockfile
 
-# One-time browser download; builds do not fetch it automatically.
+# One-time rendering-browser download.
 node --input-type=module -e 'import {ensureBrowser} from "@remotion/renderer"; await ensureBrowser({chromeMode:"headless-shell"});'
 ```
 
-A global pnpm or bundled Corepack is not required. The first command caches the pinned launcher in `.cache/npm`. The `--offline` commands below fail if that launcher is missing rather than fetching it during execution.
+This uses a cached pnpm launcher; a global pnpm or Corepack installation isn't required. Setup downloads dependencies and the browser. The `--offline` launcher commands below refuse to fetch a missing launcher; they do not certify that every child process has no network access.
 
-### 3. Diagnose and build
+### 2. Check the equipment. Say action.
 
 ```bash
 npm exec --cache .cache/npm --offline --yes --package=pnpm@10.18.3 -- pnpm explain-to-me doctor
@@ -66,86 +62,116 @@ npm exec --cache .cache/npm --offline --yes --package=pnpm@10.18.3 -- pnpm expla
 open out/my-first-explainer/video.mp4
 ```
 
-Use a **new output directory** for each build; existing targets are refused. Doctor reports missing prerequisites and setup remedies. Optional model backends need not be installed for this first build. Source archives contain neither dependencies/models nor generated videos.
+Choose a **new output directory** each time. Existing targets are refused. Doctor explains missing requirements; optional model backends may be absent for this build.
 
-## Explain your own document
+## Three ways to explain a thing
 
-For local model direction, install llama.cpp so `llama-server` is available. The current adapter expects `/opt/homebrew/bin/llama-server`; other installations are not yet supported automatically. Kokoro setup also requires Python 3 and `uv` and creates an isolated Python 3.11 environment.
+### “Use this document. Keep setup simple.”
+
+Template mode selects source material deterministically; it is extractive, rather than semantic summarization. Replace the fixture with your `.md` or `.txt` file:
 
 ```bash
-# Optional setup only: downloads pinned model/runtime assets.
+npm exec --cache .cache/npm --offline --yes --package=pnpm@10.18.3 -- pnpm explain-to-me build \
+  fixtures/inputs/cached-builds/document.md \
+  --director template --tts apple --voice Samantha \
+  --duration 60s --output out/document-template
+```
+
+Markdown supports headings, paragraphs, lists, fenced code, and bounded local PNG/JPEG/WebP references. Code and HTML stay inert. Web pages and PDFs aren't inputs in 0.2.
+
+### “Let a local model direct it.”
+
+Install llama.cpp with `llama-server` at `/opt/homebrew/bin/llama-server`, the path expected by the current adapter. Kokoro setup also needs Python 3 and `uv`; it creates an isolated Python 3.11 environment. These optional setup commands download pinned model/runtime assets:
+
+```bash
 python3 scripts/setup-director.py
 python3 scripts/setup-kokoro.py
 
 npm exec --cache .cache/npm --offline --yes --package=pnpm@10.18.3 -- pnpm explain-to-me build \
   fixtures/inputs/cached-builds/document.md \
   --director local --tts kokoro --voice af_heart --duration 60s \
-  --audience "software engineers" \
+  --audience "curious software engineers" \
   --pronunciations fixtures/inputs/cached-builds/pronunciations.json \
-  --output out/my-document-explainer
+  --output out/document-local
 ```
 
-Replace the fixture with your local `.md` or `.txt` file. Markdown accepts headings, paragraphs, lists, fenced code and bounded local PNG/JPEG/WebP references. Code and HTML are inert; arbitrary web pages are not inputs.
+`--director local` requires that backend. `--director auto` tries it and reports an extractive fallback when necessary. `--tts auto` prefers installed Kokoro and reports an Apple fallback. No cloud/subscription model adapter is built in.
 
-| Option | Behavior |
+### “I want to edit the script.”
+
+Open a build's `manifest.json`, review its narration and scene intent, and rebuild it with `--manifest`. The [bundled manifest](fixtures/golden-manifests/whisper-vs-tts.json) is a complete example; the [JSON schema](packages/contracts/schema/production-manifest.schema.json) describes the structure. Changing a document's requested duration can change its selected script; rebuilding a manifest keeps the narration fixed.
+
+Useful knobs:
+
+| Option | What it does |
 |---|---|
-| `--director auto` | Use the local model when ready; explicitly report extractive fallback when necessary. |
-| `--director local` | Require the installed local director; fail rather than silently use a cloud/subscription API or template. |
-| `--director template` | Select source material deterministically; this is not semantic summarization. |
-| `--tts auto` | Prefer installed Kokoro, otherwise explicitly fall back to Apple speech. |
-| `--tts apple` / `--tts kokoro` | Require the selected backend. |
-| `--pronunciations map.json` | Literal spoken substitutions, such as `{"PCM":"P C M"}`; visible text stays intact. |
-| `--cache-dir path` | Override `.explain-to-me/cache`. |
-| `--audience` / `--style` | Guide narration/direction, not arbitrary renderer code or new visual themes. |
+| `--duration 60s` | Requests 10–600 seconds; measured speech must fit within the accepted tolerance. |
+| `--audience "new teammates"` / `--style "friendly and concise"` | Guides document direction; doesn't add renderer themes. |
+| `--pronunciations map.json` | Changes spoken forms, e.g. `{"PCM":"P C M"}`, while preserving visible text. |
+| `--cache-dir path` | Moves the cache from `.explain-to-me/cache`. |
+| `--output path` | Writes to a new directory. |
 
-Use `pnpm explain-to-me --help` or `pnpm explain-to-me --version` through the cached launcher above. The CLI is run from source; no global executable or npm publication is provided.
+Run `pnpm explain-to-me --help` or `--version` through the cached launcher above. This is a source checkout CLI; no global executable or npm package is published.
 
-## Outputs and revisions
+## Let your agent handle setup
 
-| Artifact | Contents |
+Copy this into your coding agent. Tiny director's chair optional.
+
+```text
+Install Explain-to-Me v0.2.0 from https://github.com/TommyAllsup/explain-to-me
+for this Mac. Read README.md and docs/quick-install.md at that tag first and
+follow their pinned setup commands. Use a new checkout, leave existing projects
+alone, and check Node.js 24+, Git, FFmpeg/ffprobe, and the Samantha voice.
+Install project dependencies and the Remotion Headless Shell browser, then run
+doctor. Start with Apple speech and the bundled whisper-vs-tts manifest;
+do not download optional LLM/Kokoro models for this first run.
+Keep my private inputs and generated jobs in a separate workspace outside the
+software checkout. Use scripts/agent-explainer.py for the smoke build, following
+docs/agent-integration.md. Report the exact checkout/tag, doctor result, job JSON,
+video and caption paths, and any remaining prerequisites. Open the video if
+possible. Automated QC is not my approval of the script or finished movie.
+```
+
+[The full agent setup guide](docs/quick-install.md) includes exact commands and the private-workspace workflow. The launcher returns structured JSON and retains failed-job diagnostics; it doesn't install models, update Git, or upload your work.
+
+## What's in the goodie bag?
+
+| File | Contents |
 |---|---|
-| `video.mp4` / `audio.wav` | Muxed video and narration audio. |
-| `captions.vtt` / `captions.srt` | Captions aligned to measured narration chunks. |
-| `manifest.json` | Validated production intent. |
-| `report.json` | Automated checks, timings, cache state, resolved assets and provenance. |
+| `video.mp4` / `audio.wav` | The movie and narration audio. |
+| `captions.vtt` / `captions.srt` | Captions timed to measured sentence/phrase audio chunks. |
+| `manifest.json` | The validated script and scene plan. |
+| `report.json` | Automated media checks, timings, cache state, assets, and provenance. |
 
-Approved images are copied beside the manifest in `assets/`; supporting scene samples may also be present. Rebuild a saved manifest with `--manifest` to retain the script instead of directing the document again. Exact reproduction requires the full build record and pinned environment, not the manifest alone. Independent cold TTS is not promised to be bit-identical.
+Approved images are copied into `assets/`; scene-boundary samples support review. A manifest alone isn't the full reproducibility record: keep the build report and pinned environment too. Independent cold speech synthesis isn't promised to be bit-identical, and concurrent cold builds can duplicate work.
 
-Unchanged warm builds can reuse expensive work, but still mux and validate output. Separate concurrent cold builds may duplicate work; cross-process deduplication is not promised.
+## When the film crew drops a clipboard
 
-## Troubleshooting
+- **Browser missing:** run the one-time Headless Shell setup. Builds never download it automatically.
+- **The duration doesn't fit:** review measured attempts; shorten a long script, add reviewed narration to a short one, or change the target. Speech isn't truncated or padded to force a match.
+- **Socket path too long:** use a shorter user-owned `TMPDIR` or private workspace path. Private Unix transport remains required.
+- **Build failed:** inspect the retained staging/job diagnostics. Redact source text and personal paths before sharing logs.
 
-- **Missing browser:** complete the explicit Headless Shell setup. Builds never download a browser.
-- **Duration cannot be reached:** review the measured attempts. Add reviewed narration or request less time for a short script; shorten a long script or allow more time. Changing a document's requested duration may change its selected script; use a saved manifest to keep narration fixed. Speech is never truncated or padded to force a match.
-- **Temporary socket path too long:** 0.2 uses shorter private names. An extremely long inherited `TMPDIR` can still fail; choose a shorter user-owned temporary root for that invocation. Private transport is never replaced with a shared socket or TCP fallback.
-- **Build failed:** diagnostics remain in a staging directory. Review/redact source text and personal paths before sharing logs.
+## Small release, clear boundaries
 
-## Boundaries and honest limits
+Local model inference uses a private Unix socket, and renderer requests are restricted and audited. Whole-process no-egress verification remains open. Local-first isn't a security certification; see [SECURITY.md](SECURITY.md).
 
-Setup deliberately downloads dependencies, the browser and optional models. Runtime model inference uses a private Unix socket; renderer requests are restricted/audited. **Whole-process no-egress verification remains open.** Local-first is not a completed security certification.
+Model output is constrained manifest data. Approved image paths are bounded, copied, and hash-checked. These controls aren't a sandbox guarantee. Automated checks and source mappings help inspection; they don't establish factual correctness, pleasant narration, or human approval. Watch and listen before sharing.
 
-Model output is constrained manifest data, not executable React or shell commands. Image references are canonicalized within approved roots, bounded, copied and hash-checked. These controls are not a sandbox guarantee; see [security guidance](SECURITY.md).
+Custom cartoons, imported music, per-sentence pacing, word-aligned captions, ASR/listening review, PDF input, 1080p output, and a Studio UI aren't built-in 0.2 features. The [roadmap](ROADMAP.md) tracks what's next.
 
-Automated media/timing/caption checks do not approve accuracy, naturalness or pacing. Review your script and watch/listen to the output. Source mappings help inspection but do not prove generated claims. Captions are sentence/phrase timed, not word-aligned.
+## Help make the explanations better
 
-Custom cartoons, imported music, per-sentence pacing, ASR/listening review, PDF input, 1080p output and a Studio UI are **not built-in 0.2 features**. See [ROADMAP.md](ROADMAP.md) for proposed sequencing.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports, small fixes, and synthetic examples are welcome. Linux CI covers typechecking and unit tests; macOS speech and full media builds need their own checks.
 
-## Development and evidence
+- [Changelog](CHANGELOG.md) · [0.2.0 release notes](docs/releases/0.2.0.md)
+- [0.2 verification evidence](docs/benchmarks/0.2-readiness.md) · [Acceptance targets](docs/benchmarks/acceptance.md)
+- [Agent integration](docs/agent-integration.md) · [System boundaries](docs/architecture/0001-system-boundaries.md) · [Renderer decision](docs/architecture/0002-renderer-selection.md)
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md) for checks and small-change guidelines. Linux CI covers typechecking/unit tests, not macOS speech or end-to-end media. Adding a workflow is not evidence that remote CI has run.
-
-- [Changelog](CHANGELOG.md) · [0.2 release preview](docs/releases/0.2.0.md)
-- [0.2 verification evidence](docs/benchmarks/0.2-readiness.md)
-- [System boundaries](docs/architecture/0001-system-boundaries.md) · [Renderer decision](docs/architecture/0002-renderer-selection.md)
-- [Milestone 1](docs/benchmarks/milestone-1-results.md) · [Phase 2](docs/benchmarks/phase-2-results.md) · [Phase 3](docs/benchmarks/phase-3-results.md) measurements
-- [Acceptance contract and targets](docs/benchmarks/acceptance.md)
-
-Historical reports retain their original scope and limitations; they are not blanket 0.2 acceptance or universal performance claims.
+Historical benchmark reports retain their original scope; they're not universal performance claims.
 
 ## License
 
 Created by **Tommy Allsup**. Project code is [MIT-licensed](LICENSE).
 
-Remotion, model weights, voice packs, browsers and other dependencies/assets retain their own terms. MIT licensing this project does not waive those terms or establish commercial-use clearance. Read [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before redistribution or commercial deployment.
-
-`private: true` in package metadata prevents accidental npm publication; it is separate from GitHub repository visibility. The repository remains private while this release is under owner review.
+Remotion, models, voices, browsers, dependencies, and supplied assets retain their own terms. Read [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before redistributing or deploying commercially. Package metadata stays `private: true` to prevent accidental npm publication; GitHub source availability is separate.
